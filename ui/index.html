@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chess Puzzles</title>
+<link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+<style>
+  :root { --bg:#161512; --panel:#262421; --text:#e8e6e3; --muted:#9a9895; --ok:#6fbf73; --bad:#e5645a; --accent:#5b9bd5; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:16px; display:flex; flex-wrap:wrap; gap:20px; justify-content:center; }
+  #boardWrap { width:min(560px, 100%); }
+  #board { width:100%; }
+  aside { flex:1 1 280px; max-width:360px; background:var(--panel); border-radius:8px; padding:16px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .muted { color:var(--muted); font-size:13px; }
+  #status { margin:14px 0; padding:10px; border-radius:6px; background:#1d1c1a; min-height:44px; }
+  #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
+  button { background:#3a3835; color:var(--text); border:0; border-radius:6px; padding:8px 12px; margin:4px 4px 0 0; cursor:pointer; font:inherit; }
+  button:hover { background:#4a4845; } button.primary { background:var(--accent); color:#fff; }
+  #solution { margin-top:10px; font-family:ui-monospace, Consolas, monospace; font-size:13px; }
+  #stats { margin-top:14px; }
+</style>
+</head>
+<body>
+<main>
+  <div id="boardWrap"><div id="board"></div></div>
+  <aside>
+    <h1 id="title">Loading...</h1>
+    <div class="muted" id="meta"></div>
+    <div id="status">Find the best move.</div>
+    <div>
+      <button id="hint">Hint</button>
+      <button id="show">Show solution</button>
+      <button id="retry">Retry</button>
+    </div>
+    <div>
+      <button id="prev">&larr; Prev</button>
+      <button id="next" class="primary">Next &rarr;</button>
+    </div>
+    <div id="solution"></div>
+    <div id="stats" class="muted"></div>
+  </aside>
+</main>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script>
+let puzzles = [], idx = 0, game, board, solved = false, attempted = false;
+let sol = [], step = 0, busy = false;   // sol: verified UCI moves, solver first, alternating with opponent replies
+
+function uciMove(u) { return { from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.length > 4 ? u[4] : undefined }; }
+function totalSolverMoves() { return Math.ceil(sol.length / 2); }
+
+function loadStats() { try { return JSON.parse(localStorage.getItem('puzzleStats')) || {}; } catch (e) { return {}; } }
+function saveStats(s) { try { localStorage.setItem('puzzleStats', JSON.stringify(s)); } catch (e) {} }
+
+function setStatus(msg, cls) { const el = $('#status'); el.text(msg).removeClass('ok bad').addClass(cls || ''); }
+
+function renderStats() {
+  const s = loadStats(), ids = Object.keys(s);
+  const ok = ids.filter(i => s[i].first === 'solved').length;
+  $('#stats').text(`First-try solved: ${ok} / ${ids.length} attempted`);
+}
+
+function loadPuzzle(i) {
+  idx = (i + puzzles.length) % puzzles.length;
+  const p = puzzles[idx];
+  game = new Chess(p.fen);
+  solved = false; attempted = false; busy = false;
+  sol = (p.solution && p.solution.length) ? p.solution : [p.best];
+  step = 0;
+  board.orientation(p.turn);
+  board.position(p.fen, false);
+  $('#title').text(`Puzzle ${idx + 1} of ${puzzles.length}`);
+  $('#meta').text(`${p.turn === 'white' ? 'White' : 'Black'} to move - from ${p.white} vs ${p.black} (${p.date})`);
+  $('#solution').empty();
+  setStatus(totalSolverMoves() > 1 ? `Find the best move (1 of ${totalSolverMoves()}).` : 'Find the best move.');
+  renderStats();
+}
+
+function onDragStart(source, piece) {
+  if (solved || busy) return false;
+  const turn = puzzles[idx].turn === 'white' ? 'w' : 'b';
+  return piece.startsWith(turn);
+}
+
+function onDrop(source, target) {
+  const p = puzzles[idx];
+  const mv = game.move({ from: source, to: target, promotion: 'q' });
+  if (mv === null) return 'snapback';
+  const uci = mv.from + mv.to + (mv.promotion || '');
+  const stats = loadStats();
+  if (uci === sol[step]) {
+    step++;
+    if (step >= sol.length) {
+      if (!attempted) { stats[p.id] = { first: 'solved' }; saveStats(stats); }
+      solved = true;
+      setStatus('Puzzle solved!', 'ok');
+      showSolution();
+      renderStats();
+    } else {
+      busy = true;
+      setStatus('Correct! Opponent replies...', 'ok');
+      const reply = sol[step];
+      setTimeout(() => {
+        game.move(uciMove(reply));
+        board.position(game.fen());
+        step++;
+        busy = false;
+        setStatus(`Correct! Now find the next move (${step / 2 + 1} of ${totalSolverMoves()}).`, 'ok');
+      }, 500);
+    }
+  } else {
+    if (!attempted) { stats[p.id] = { first: 'failed' }; saveStats(stats); }
+    attempted = true;
+    game.undo();
+    setStatus(`${mv.san} is not the best move. Try again.`, 'bad');
+    renderStats();
+    return 'snapback';
+  }
+}
+
+function onSnapEnd() { board.position(game.fen()); }
+
+function showSolution() {
+  const p = puzzles[idx];
+  $('#solution').html(`Best: <b>${p.best_san}</b> (${p.best_cp > 0 ? '+' : ''}${p.best_cp} cp)<br>` +
+    `Next best: ${p.second_san} (${p.second_cp > 0 ? '+' : ''}${p.second_cp} cp)<br>Solution: ${p.solution_san || p.line_san}`);
+}
+
+$('#hint').on('click', () => {
+  if (solved || step >= sol.length) return;
+  setStatus(`Hint: move the piece on ${sol[step].slice(0, 2)}.`);
+});
+$('#show').on('click', () => {
+  const p = puzzles[idx];
+  if (!attempted && !solved) { const s = loadStats(); s[p.id] = { first: 'failed' }; saveStats(s); renderStats(); }
+  attempted = true;
+  setStatus(`Solution: ${p.solution_san || p.best_san}`);
+  showSolution();
+});
+$('#retry').on('click', () => loadPuzzle(idx));
+$('#prev').on('click', () => loadPuzzle(idx - 1));
+$('#next').on('click', () => loadPuzzle(idx + 1));
+
+board = Chessboard('board', {
+  draggable: true, position: 'start',
+  pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+  onDragStart, onDrop, onSnapEnd,
+});
+$(window).on('resize', () => board.resize());
+
+fetch('puzzles.json')
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(data => {
+    puzzles = data;
+    if (!puzzles.length) { $('#title').text('No puzzles'); setStatus('puzzles.json is empty.', 'bad'); return; }
+    loadPuzzle(0);
+  })
+  .catch(() => { $('#title').text('Could not load puzzles.json'); setStatus('Run the extractor with --out ui/puzzles.json and serve this folder over http.', 'bad'); });
+</script>
+</body>
+</html>
