@@ -6,89 +6,210 @@
 <title>Chess Puzzles</title>
 <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
 <style>
-  :root { --bg:#161512; --panel:#262421; --text:#e8e6e3; --muted:#9a9895; --ok:#6fbf73; --bad:#e5645a; --accent:#5b9bd5; }
+  :root { --bg:#161512; --panel:#262421; --text:#e8e6e3; --muted:#9a9895; --ok:#6fbf73; --bad:#e5645a; --accent:#5b9bd5; --line:#3a3835; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, sans-serif; }
-  main { max-width:960px; margin:0 auto; padding:16px; display:flex; flex-wrap:wrap; gap:20px; justify-content:center; }
-  #boardWrap { width:min(560px, 100%); }
-  #board { width:100%; }
-  aside { flex:1 1 280px; max-width:360px; background:var(--panel); border-radius:8px; padding:16px; }
-  h1 { font-size:18px; margin:0 0 4px; }
-  .muted { color:var(--muted); font-size:13px; }
-  #status { margin:14px 0; padding:10px; border-radius:6px; background:#1d1c1a; min-height:44px; }
+  header { background:var(--panel); padding:12px 16px; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+  header h1 { font-size:18px; margin:0 8px 0 0; }
+  header label { font-size:13px; color:var(--muted); }
+  input { background:#1d1c1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; }
+  input[type=text] { width:200px; } input.count { width:56px; text-align:center; }
+  #progress { flex:1 1 100%; font-size:13px; color:var(--muted); }
+  #progress.bad { color:var(--bad); }
+  #bar { height:4px; background:#1d1c1a; border-radius:2px; margin-top:6px; overflow:hidden; }
+  #bar > div { height:100%; width:0; background:var(--accent); transition:width .3s; }
+  main { max-width:1280px; margin:0 auto; padding:16px; display:grid; grid-template-columns:minmax(300px,520px) minmax(220px,1fr) minmax(220px,1fr); gap:16px; align-items:start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  #boardRow { display:flex; gap:8px; align-items:stretch; }
+  #boardWrap { flex:1; min-width:0; } #board { width:100%; }
+  #evalbar { position:relative; width:26px; flex:none; background:#403d39; border-radius:4px; overflow:hidden; visibility:hidden; }
+  #evalbar.on { visibility:visible; }
+  #evalFill { position:absolute; left:0; right:0; background:#f0f0f0; height:50%; transition:height .35s; bottom:0; }
+  #evalbar.flip #evalFill { bottom:auto; top:0; }
+  #evalLabel { position:absolute; left:0; right:0; text-align:center; font-size:11px; font-weight:600; writing-mode:horizontal-tb; }
+  #evalLabel.atBottom { bottom:3px; color:#403d39; } #evalLabel.atTop { top:3px; color:#f0f0f0; }
+  #evalbar.flip #evalLabel.atBottom { bottom:auto; top:3px; } #evalbar.flip #evalLabel.atTop { top:auto; bottom:3px; }
+  select { background:#1d1c1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font:inherit; }
+  .panel { background:var(--panel); border-radius:8px; padding:14px; }
+  .panel h2 { font-size:15px; margin:0 0 10px; display:flex; justify-content:space-between; }
+  .panel h2 span { color:var(--muted); font-weight:normal; font-size:13px; }
+  #title { font-size:16px; margin:0 0 4px; }
+  .muted { color:var(--muted); font-size:13px; } a { color:var(--accent); }
+  #status { margin:12px 0; padding:10px; border-radius:6px; background:#1d1c1a; min-height:44px; }
   #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
   button { background:#3a3835; color:var(--text); border:0; border-radius:6px; padding:8px 12px; margin:4px 4px 0 0; cursor:pointer; font:inherit; }
-  button:hover { background:#4a4845; } button.primary { background:var(--accent); color:#fff; }
+  button:hover { background:#4a4845; } button.primary { background:var(--accent); color:#fff; } button:disabled { opacity:.5; cursor:default; }
   #solution { margin-top:10px; font-family:ui-monospace, Consolas, monospace; font-size:13px; }
-  #stats { margin-top:14px; }
+  #stats { margin-top:12px; }
+  .list { display:flex; flex-direction:column; gap:6px; max-height:78vh; overflow-y:auto; }
+  .card { background:#1d1c1a; border:1px solid transparent; border-radius:6px; padding:8px 10px; cursor:pointer; font-size:13px; }
+  .card:hover { border-color:var(--line); } .card.active { border-color:var(--accent); }
+  .card .top { display:flex; justify-content:space-between; gap:8px; }
+  .card .mark.solved { color:var(--ok); } .card .mark.failed { color:var(--bad); }
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:10px; background:#33312e; color:var(--muted); margin-right:4px; }
+  .tag.you { background:#26402a; color:var(--ok); }
+  .empty { color:var(--muted); font-size:13px; }
+  /* board theme: classic green (overrides chessboard.js defaults #f0d9b5 / #b58863) */
+  .white-1e1d7 { background-color:#eeeed2; color:#769656; }
+  .black-3c85d { background-color:#769656; color:#eeeed2; }
 </style>
 </head>
 <body>
+<header>
+  <h1>Chess Puzzles</h1>
+  <form id="form" style="display:contents">
+    <input type="text" id="username" placeholder="Lichess username" autocomplete="off" required>
+    <label>Blitz <input type="text" class="count" id="nBlitz" value="20" inputmode="numeric" maxlength="3" autocomplete="off"></label>
+    <label>Rapid <input type="text" class="count" id="nRapid" value="10" inputmode="numeric" maxlength="3" autocomplete="off"></label>
+    <button class="primary" id="go" type="submit">Fetch &amp; analyse</button>
+  </form>
+  <div id="progress">Enter a Lichess username to extract puzzles from their latest blitz and rapid games.<div id="bar"><div></div></div></div>
+</header>
+
 <main>
-  <div id="boardWrap"><div id="board"></div></div>
-  <aside>
-    <h1 id="title">Loading...</h1>
-    <div class="muted" id="meta"></div>
-    <div id="status">Find the best move.</div>
-    <div>
-      <button id="hint">Hint</button>
-      <button id="show">Show solution</button>
-      <button id="retry">Retry</button>
+  <section>
+    <div id="boardRow">
+      <div id="evalbar" title="Evaluation (White's view)"><div id="evalFill"></div><span id="evalLabel"></span></div>
+      <div id="boardWrap"><div id="board"></div></div>
     </div>
-    <div>
-      <button id="prev">&larr; Prev</button>
-      <button id="next" class="primary">Next &rarr;</button>
+    <div class="panel" style="margin-top:12px">
+      <h1 id="title">No puzzle selected</h1>
+      <div class="muted" id="meta"></div>
+      <div id="status">Fetch a user's games to get puzzles.</div>
+      <div>
+        <button id="hint">Hint</button>
+        <button id="show">Show solution</button>
+        <button id="retry">Retry</button>
+        <button id="undo" title="Step back one move (only after the puzzle is over)">Undo</button>
+      </div>
+      <div>
+        <button id="prev">&larr; Prev</button>
+        <button id="next" class="primary">Next &rarr;</button>
+      </div>
+      <div id="solution"></div>
+      <div id="evalInfo" class="muted" style="margin-top:10px"></div>
+      <label class="muted">Eval engine
+        <select id="engineSel"><option value="browser" selected>Browser (WASM)</option><option value="native">Native (server)</option></select>
+      </label>
+      <div id="stats" class="muted"></div>
+      <button id="resetStats" title="Forget which puzzles you have already attempted">Reset progress</button>
     </div>
-    <div id="solution"></div>
-    <div id="stats" class="muted"></div>
-  </aside>
+  </section>
+  <section class="panel"><h2>Blitz <span id="cBlitz"></span></h2><div class="list" id="listBlitz"></div></section>
+  <section class="panel"><h2>Rapid <span id="cRapid"></span></h2><div class="list" id="listRapid"></div></section>
 </main>
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script src="engines.js"></script>
 <script>
-let puzzles = [], idx = 0, game, board, solved = false, attempted = false;
+const byPerf = { blitz: [], rapid: [] };
+let cur = null, game, board, solved = false, attempted = false, free = false;  // free: puzzle over, board is open for exploring
 let sol = [], step = 0, busy = false;   // sol: verified UCI moves, solver first, alternating with opponent replies
+let pollTimer = null;
+
+const EVAL_DEPTH = 18;
+function engineKind() { return $('#engineSel').val(); }
+
+function showEval(r, err) {
+  const info = $('#evalInfo');
+  if (err || !r) { info.text(`Eval failed (${engineKind()}): ${(err && err.message) || 'no result'}`); return; }
+  const share = Evaluator.whiteShare(r);
+  $('#evalFill').css('height', Math.round(share * 100) + '%');
+  $('#evalbar').toggleClass('flip', !!cur && cur.turn === 'black');   // follows the board orientation
+  $('#evalLabel').text(Evaluator.label(r)).toggleClass('atBottom', share >= 0.5).toggleClass('atTop', share < 0.5);
+  info.text(r.over ? 'Game over in this position.' :
+    `${r.engine === 'native' ? 'Native' : 'Browser'} · depth ${r.depth}${r.done ? '' : '...'}` +
+    (r.ms ? ` · ${(r.ms / 1000).toFixed(1)}s` : '') + (r.best_san ? ` · best ${r.best_san}` : ''));
+}
+
+function updateEval() {   // only once the puzzle is over, so it never gives the answer away
+  if (!free || !game) return;
+  $('#evalbar').addClass('on');
+  if (game.game_over()) {
+    Evaluator.cancel();
+    showEval({ over: true, result: game.in_checkmate() ? (game.turn() === 'w' ? '0-1' : '1-0') : '1/2-1/2' });
+    return;
+  }
+  Evaluator.request(engineKind(), game.fen(), EVAL_DEPTH, showEval);
+}
 
 function uciMove(u) { return { from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.length > 4 ? u[4] : undefined }; }
 function totalSolverMoves() { return Math.ceil(sol.length / 2); }
 
 function loadStats() { try { return JSON.parse(localStorage.getItem('puzzleStats')) || {}; } catch (e) { return {}; } }
 function saveStats(s) { try { localStorage.setItem('puzzleStats', JSON.stringify(s)); } catch (e) {} }
-
-function setStatus(msg, cls) { const el = $('#status'); el.text(msg).removeClass('ok bad').addClass(cls || ''); }
+function setStatus(msg, cls) { $('#status').text(msg).removeClass('ok bad').addClass(cls || ''); }
 
 function renderStats() {
-  const s = loadStats(), ids = Object.keys(s);
-  const ok = ids.filter(i => s[i].first === 'solved').length;
-  $('#stats').text(`First-try solved: ${ok} / ${ids.length} attempted`);
+  const s = loadStats(), all = byPerf.blitz.concat(byPerf.rapid);
+  const att = all.filter(p => s[p.id]), ok = att.filter(p => s[p.id].first === 'solved').length;
+  $('#stats').text(`First-try solved: ${ok} / ${att.length} attempted`);
 }
 
-function loadPuzzle(i) {
-  idx = (i + puzzles.length) % puzzles.length;
-  const p = puzzles[idx];
+function gameLabel(p) {
+  return `${p.perf === 'blitz' ? 'Blitz' : 'Rapid'} ${p.time_control} vs ${p.opponent}, move ${p.move_number}`;
+}
+
+function renderLists() {
+  const stats = loadStats();
+  for (const perf of ['blitz', 'rapid']) {
+    const P = perf === 'blitz' ? 'Blitz' : 'Rapid', list = $('#list' + P).empty();
+    $('#c' + P).text(byPerf[perf].length + ' puzzles');
+    if (!byPerf[perf].length) list.append($('<div class="empty">').text('No puzzles yet.'));
+    byPerf[perf].forEach(p => {
+      const st = stats[p.id] && stats[p.id].first;
+      const card = $('<div class="card">').attr('data-id', p.id).toggleClass('active', !!cur && cur.id === p.id);
+      card.append($('<div class="top">')
+        .append($('<span>').text(`vs ${p.opponent} · ${p.time_control}`))
+        .append($('<span class="mark">').addClass(st || '').text(st === 'solved' ? '✓' : st === 'failed' ? '✗' : '')));
+      card.append($('<div class="muted">').text(`${p.date} · move ${p.move_number} · ${p.turn === 'white' ? 'White' : 'Black'} to move`));
+      card.append($('<div>')
+        .append($('<span class="tag">').addClass(p.solver_is_player ? 'you' : '').text(p.solver_is_player ? 'your move' : "opponent's move"))
+        .append($('<span class="tag">').text(`${p.only_moves} only-moves`)));
+      list.append(card);
+    });
+  }
+}
+
+function loadPuzzle(p) {
+  cur = p;
   game = new Chess(p.fen);
-  solved = false; attempted = false; busy = false;
+  solved = false; attempted = false; busy = false; free = false;
+  Evaluator.cancel(); $('#evalbar').removeClass('on'); $('#evalInfo').text('');
   sol = (p.solution && p.solution.length) ? p.solution : [p.best];
   step = 0;
   board.orientation(p.turn);
   board.position(p.fen, false);
-  $('#title').text(`Puzzle ${idx + 1} of ${puzzles.length}`);
-  $('#meta').text(`${p.turn === 'white' ? 'White' : 'Black'} to move - from ${p.white} vs ${p.black} (${p.date})`);
+  $('#title').text(gameLabel(p));
+  $('#meta').empty()
+    .append(document.createTextNode(`${p.white} vs ${p.black} (${p.date}) · `))
+    .append($('<a target="_blank" rel="noopener">').attr('href', p.game_url).text('open game on Lichess'));
   $('#solution').empty();
   setStatus(totalSolverMoves() > 1 ? `Find the best move (1 of ${totalSolverMoves()}).` : 'Find the best move.');
-  renderStats();
+  renderStats(); renderLists();
+}
+
+function neighbour(delta) {
+  if (!cur) return;
+  const list = byPerf[cur.perf], i = list.findIndex(p => p.id === cur.id);
+  if (list.length) loadPuzzle(list[(i + delta + list.length) % list.length]);
 }
 
 function onDragStart(source, piece) {
-  if (solved || busy) return false;
-  const turn = puzzles[idx].turn === 'white' ? 'w' : 'b';
-  return piece.startsWith(turn);
+  if (!cur || busy) return false;
+  if (free) return !game.game_over() && piece.startsWith(game.turn());   // either side, whoever is to move
+  return piece.startsWith(cur.turn === 'white' ? 'w' : 'b');
 }
 
 function onDrop(source, target) {
-  const p = puzzles[idx];
+  const p = cur;
+  if (free) {  // exploring after the puzzle: any legal move, no checking against the solution
+    if (game.move({ from: source, to: target, promotion: 'q' }) === null) return 'snapback';
+    updateEval();
+    return;
+  }
   const mv = game.move({ from: source, to: target, promotion: 'q' });
   if (mv === null) return 'snapback';
   const uci = mv.from + mv.to + (mv.promotion || '');
@@ -97,15 +218,15 @@ function onDrop(source, target) {
     step++;
     if (step >= sol.length) {
       if (!attempted) { stats[p.id] = { first: 'solved' }; saveStats(stats); }
-      solved = true;
-      setStatus('Puzzle solved!', 'ok');
-      showSolution();
-      renderStats();
+      solved = true; free = true;
+      setStatus('Puzzle solved! The board is free now - move any pieces to explore (Undo to step back).', 'ok');
+      showSolution(); renderStats(); renderLists();
     } else {
       busy = true;
       setStatus('Correct! Opponent replies...', 'ok');
       const reply = sol[step];
       setTimeout(() => {
+        if (cur !== p || free) return;
         game.move(uciMove(reply));
         board.position(game.fen());
         step++;
@@ -118,7 +239,7 @@ function onDrop(source, target) {
     attempted = true;
     game.undo();
     setStatus(`${mv.san} is not the best move. Try again.`, 'bad');
-    renderStats();
+    renderStats(); renderLists();
     return 'snapback';
   }
 }
@@ -126,25 +247,122 @@ function onDrop(source, target) {
 function onSnapEnd() { board.position(game.fen()); }
 
 function showSolution() {
-  const p = puzzles[idx];
-  $('#solution').html(`Best: <b>${p.best_san}</b> (${p.best_cp > 0 ? '+' : ''}${p.best_cp} cp)<br>` +
-    `Next best: ${p.second_san} (${p.second_cp > 0 ? '+' : ''}${p.second_cp} cp)<br>Solution: ${p.solution_san || p.line_san}`);
+  const p = cur;
+  $('#solution').empty()
+    .append($('<div>').text(`Best: ${p.best_san} (${p.best_cp > 0 ? '+' : ''}${p.best_cp} cp)`))
+    .append($('<div>').text(`Next best: ${p.second_san} (${p.second_cp > 0 ? '+' : ''}${p.second_cp} cp)`))
+    .append($('<div>').text(`Solution: ${p.solution_san || p.line_san}`))
+    .append($('<div style="margin-top:8px">').text(playedText(p)))
+    .append($('<div>').text(resultText(p)));
+  updateEval();
+}
+
+function playedText(p) {
+  if (p.played === undefined) return 'In the game: unknown (restart the server to pick up the latest code).';
+  const who = p.solver_is_player ? 'You' : p.opponent;
+  if (p.played === null) return 'In the game: no move was played here (the game ended).';
+  return p.played_correct
+    ? `In the game: ${who} played ${p.played_san} - the correct move.`
+    : `In the game: ${who} played ${p.played_san} - not the best move (best was ${p.best_san}).`;
+}
+
+function resultText(p) {
+  if (!p.result) return 'Game result: unknown (restart the server to pick up the latest code).';
+  const label = { won: 'you won', lost: 'you lost', draw: 'draw', unknown: '' }[p.user_outcome] || '';
+  const how = p.termination && p.termination !== 'Normal' ? ` (${p.termination})` : '';
+  return `Game result: ${p.result}${label ? ' - ' + label : ''}${how}`;
 }
 
 $('#hint').on('click', () => {
-  if (solved || step >= sol.length) return;
+  if (!cur || solved || free || step >= sol.length) return;
   setStatus(`Hint: move the piece on ${sol[step].slice(0, 2)}.`);
 });
 $('#show').on('click', () => {
-  const p = puzzles[idx];
-  if (!attempted && !solved) { const s = loadStats(); s[p.id] = { first: 'failed' }; saveStats(s); renderStats(); }
-  attempted = true;
-  setStatus(`Solution: ${p.solution_san || p.best_san}`);
-  showSolution();
+  if (!cur) return;
+  if (!attempted && !solved) { const s = loadStats(); s[cur.id] = { first: 'failed' }; saveStats(s); }
+  attempted = true; free = true; busy = false;
+  setStatus(`Solution: ${cur.solution_san || cur.best_san}. The board is free now - move any pieces to explore.`);
+  showSolution(); renderStats(); renderLists();
 });
-$('#retry').on('click', () => loadPuzzle(idx));
-$('#prev').on('click', () => loadPuzzle(idx - 1));
-$('#next').on('click', () => loadPuzzle(idx + 1));
+$('#retry').on('click', () => cur && loadPuzzle(cur));
+$('#undo').on('click', () => { if (free && game.undo()) { board.position(game.fen()); updateEval(); } });
+try { const saved = localStorage.getItem('evalEngine'); if (saved === 'native' || saved === 'browser') $('#engineSel').val(saved); } catch (e) {}
+$('#engineSel').on('change', () => {
+  try { localStorage.setItem('evalEngine', engineKind()); } catch (e) {}
+  updateEval();
+});
+$('#resetStats').on('click', () => {
+  if (!confirm('Clear the solved / failed marks for all puzzles?')) return;
+  try { localStorage.removeItem('puzzleStats'); } catch (e) {}
+  renderStats(); renderLists();
+  if (cur) { attempted = false; }
+});
+$('#prev').on('click', () => neighbour(-1));
+$('#next').on('click', () => neighbour(1));
+$(document).on('click', '.card', function () {
+  const id = $(this).attr('data-id');
+  const p = byPerf.blitz.concat(byPerf.rapid).find(x => x.id === id);
+  if (p) loadPuzzle(p);
+});
+
+function setProgress(msg, frac, bad) {
+  $('#progress').toggleClass('bad', !!bad);
+  $('#progress').contents().first().replaceWith(document.createTextNode(msg));
+  $('#bar > div').css('width', Math.round((frac || 0) * 100) + '%');
+}
+
+async function poll(jobId) {
+  try {
+    const r = await fetch('/api/job/' + jobId, { cache: 'no-store' });
+    const j = await r.json();
+    if (j.error && j.status !== 'error') throw new Error(j.error);
+    byPerf.blitz = j.puzzles.blitz; byPerf.rapid = j.puzzles.rapid;
+    const n = byPerf.blitz.length + byPerf.rapid.length;
+    if (j.status === 'error') {
+      setProgress(j.error, 0, true); $('#go').prop('disabled', false); renderLists(); return;
+    }
+    if (j.phase === 'fetching games') setProgress(`Fetching ${j.username}'s games from Lichess...`, 0.02);
+    else if (j.status === 'running') setProgress(`Analysing games: ${j.done} / ${j.total} done · ${n} puzzles found`, j.total ? j.done / j.total : 0);
+    if (j.status === 'done') {
+      const errs = j.games.filter(g => g.error).length;
+      setProgress(j.total ? `Done: ${j.total} games analysed (${j.fetched.blitz || 0} blitz, ${j.fetched.rapid || 0} rapid) · ${n} puzzles` +
+        (errs ? ` · ${errs} game(s) failed` : '') : `No blitz or rapid games found for ${j.username}.`, 1);
+      $('#go').prop('disabled', false);
+    }
+    if (!cur && n) loadPuzzle(byPerf.blitz[0] || byPerf.rapid[0]); else renderLists();
+    renderStats();
+    if (j.status === 'running') pollTimer = setTimeout(() => poll(jobId), 1000);
+  } catch (e) {
+    setProgress('Lost contact with the server: ' + e.message, 0, true); $('#go').prop('disabled', false);
+  }
+}
+
+// count boxes: digits only; blank or out-of-range values are fixed up (0-100) when you leave the box or submit
+$('.count').on('input', function () { this.value = this.value.replace(/\D/g, ''); });
+function countOf(sel) { const n = parseInt($(sel).val(), 10); const v = Number.isNaN(n) ? 0 : Math.min(100, Math.max(0, n)); $(sel).val(v); return v; }
+$('.count').on('blur', function () { countOf(this); });
+
+$('#form').on('submit', async (ev) => {
+  ev.preventDefault();
+  clearTimeout(pollTimer);
+  byPerf.blitz = []; byPerf.rapid = []; cur = null;
+  renderLists();
+  $('#title').text('No puzzle selected'); $('#meta').empty(); $('#solution').empty();
+  board.position('start', false); setStatus('Waiting for the first puzzle...');
+  $('#go').prop('disabled', true);
+  setProgress('Starting...', 0);
+  try {
+    const r = await fetch('/api/analyse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: $('#username').val().trim(), blitz: countOf('#nBlitz'), rapid: countOf('#nRapid') }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    poll(j.job);
+  } catch (e) {
+    setProgress(String(e.message || e), 0, true); $('#go').prop('disabled', false);
+  }
+});
 
 board = Chessboard('board', {
   draggable: true, position: 'start',
@@ -152,15 +370,7 @@ board = Chessboard('board', {
   onDragStart, onDrop, onSnapEnd,
 });
 $(window).on('resize', () => board.resize());
-
-fetch('puzzles.json')
-  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-  .then(data => {
-    puzzles = data;
-    if (!puzzles.length) { $('#title').text('No puzzles'); setStatus('puzzles.json is empty.', 'bad'); return; }
-    loadPuzzle(0);
-  })
-  .catch(() => { $('#title').text('Could not load puzzles.json'); setStatus('Run the extractor with --out ui/puzzles.json and serve this folder over http.', 'bad'); });
+renderLists(); renderStats();
 </script>
 </body>
 </html>
