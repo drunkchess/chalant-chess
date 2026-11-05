@@ -172,6 +172,11 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=str(UI_DIR), **k)
 
+    def end_headers(self):
+        if not self.path.startswith("/api/"):   # static files: always revalidate, so edits show up on a normal refresh
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def log_message(self, fmt, *args):
         if "/api/job/" not in (self.path or ""):
             super().log_message(fmt, *args)
