@@ -4,54 +4,157 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chess Puzzles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Sora:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
 <style>
-  :root { --bg:#161512; --panel:#262421; --text:#e8e6e3; --muted:#9a9895; --ok:#6fbf73; --bad:#e5645a; --accent:#5b9bd5; --line:#3a3835; }
+  :root { --bg:#161512; --panel:#262421; --text:#e8e6e3; --muted:#9a9895; --ok:#6fbf73; --bad:#e5645a; --accent:#5b9bd5; --line:#3a3835;
+          --font-ui:'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;        /* text, buttons, forms */
+          --font-display:'Sora', 'Inter', system-ui, sans-serif;                      /* site name, banner, titles */
+          --font-mono:'JetBrains Mono', ui-monospace, Consolas, monospace; }          /* moves, numbers, scores */
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 var(--font-ui); font-feature-settings:'cv11','ss01'; -webkit-font-smoothing:antialiased; }
   header { background:var(--panel); padding:12px 16px; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
-  header h1 { font-size:18px; margin:0 8px 0 0; }
+  header h1 { font-family:var(--font-display); font-size:19px; font-weight:700; letter-spacing:-.2px; margin:0 8px 0 0; }
   header label { font-size:13px; color:var(--muted); }
   input { background:#1d1c1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; }
-  input[type=text] { width:200px; } input.count { width:56px; text-align:center; }
+  input[type=text] { width:200px; } select.count { padding:7px 8px; }
   #progress { flex:1 1 100%; font-size:13px; color:var(--muted); }
   #progress.bad { color:var(--bad); }
-  #bar { height:4px; background:#1d1c1a; border-radius:2px; margin-top:6px; overflow:hidden; }
+  #bar { visibility:hidden; height:4px; background:#1d1c1a; border-radius:2px; margin-top:6px; overflow:hidden; }
   #bar > div { height:100%; width:0; background:var(--accent); transition:width .3s; }
-  main { max-width:1280px; margin:0 auto; padding:16px; display:grid; grid-template-columns:minmax(300px,520px) minmax(220px,1fr) minmax(220px,1fr); gap:16px; align-items:start; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  main { max-width:1700px; margin:0 auto; padding:16px; display:grid; grid-template-columns:minmax(220px,290px) var(--board-col,660px) minmax(240px,1fr); gap:16px; align-items:start; }
+  .list { max-height:calc(100vh - 150px); }
+  html, body { overflow-x:hidden; }
   #boardRow { display:flex; gap:8px; align-items:stretch; }
   #boardWrap { flex:1; min-width:0; } #board { width:100%; }
-  #evalbar { position:relative; width:26px; flex:none; background:#403d39; border-radius:4px; overflow:hidden; visibility:hidden; }
-  #evalbar.on { visibility:visible; }
+  #evalbar { position:relative; width:38px; flex:none; background:#2b2926; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  #evalbar:not(.on) #evalFill, #evalbar:not(.on) #evalLabel { display:none; }   /* an empty track until the puzzle is over */
   #evalFill { position:absolute; left:0; right:0; background:#f0f0f0; height:50%; transition:height .35s; bottom:0; }
   #evalbar.flip #evalFill { bottom:auto; top:0; }
-  #evalLabel { position:absolute; left:0; right:0; text-align:center; font-size:11px; font-weight:600; writing-mode:horizontal-tb; }
+  #evalLabel { position:absolute; left:0; right:0; text-align:center; font-size:10px; font-weight:600; white-space:nowrap; letter-spacing:-.3px; writing-mode:horizontal-tb; }
   #evalLabel.atBottom { bottom:3px; color:#403d39; } #evalLabel.atTop { top:3px; color:#f0f0f0; }
   #evalbar.flip #evalLabel.atBottom { bottom:auto; top:3px; } #evalbar.flip #evalLabel.atTop { top:auto; bottom:3px; }
   select { background:#1d1c1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font:inherit; }
   .panel { background:var(--panel); border-radius:8px; padding:14px; }
   .panel h2 { font-size:15px; margin:0 0 10px; display:flex; justify-content:space-between; }
   .panel h2 span { color:var(--muted); font-weight:normal; font-size:13px; }
-  #title { font-size:16px; margin:0 0 4px; }
+  #title { font-family:var(--font-display); font-size:17px; font-weight:600; margin:0 0 4px; }
+  .panel h2 { font-family:var(--font-display); font-weight:600; }
+  #progress, #stats, #pos, #evalLabel, .card .muted, #cCount { font-variant-numeric:tabular-nums; }
+  #progress, #pos, #evalInfo { font-family:var(--font-mono); font-size:12px; }
+  #evalLabel { font-family:var(--font-mono); }
+  .card .top > span:first-child { font-weight:500; }
+  .card .muted { font-family:var(--font-mono); font-size:11.5px; }
   .muted { color:var(--muted); font-size:13px; } a { color:var(--accent); }
-  #status { margin:12px 0; padding:10px; border-radius:6px; background:#1d1c1a; min-height:44px; }
+  #status { margin:10px 0 12px; padding:10px 12px; border-radius:6px; background:#1d1c1a; min-height:42px; }
+  #status.win { display:flex; align-items:center; gap:10px; font-family:var(--font-display); font-weight:600; font-size:16px; }
+  #status.win::before { content:'★'; display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; flex:none;
+    background:#e9b949; color:#4a3300; font-size:16px; animation:pop .45s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes pop { from { transform:scale(.3); opacity:0; } to { transform:scale(1); opacity:1; } }
   #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
-  button { background:#3a3835; color:var(--text); border:0; border-radius:6px; padding:8px 12px; margin:4px 4px 0 0; cursor:pointer; font:inherit; }
+  button { background:#3a3835; color:var(--text); border:0; border-radius:6px; padding:8px 12px; margin:0; cursor:pointer; font:inherit; }
   button:hover { background:#4a4845; } button.primary { background:var(--accent); color:#fff; } button:disabled { opacity:.5; cursor:default; }
-  #solution { margin-top:10px; font-family:ui-monospace, Consolas, monospace; font-size:13px; }
-  #stats { margin-top:12px; }
+  #solution { margin-top:10px; font-family:var(--font-mono); font-size:12.5px; line-height:1.6; }
+  #turnBanner { display:flex; align-items:center; gap:12px; margin:0 0 10px; min-height:34px; font-family:var(--font-display); font-size:22px; font-weight:600; letter-spacing:-.1px; }
+  #turnSwatch { width:26px; height:26px; border-radius:7px; flex:none; border:2px solid transparent; }
+  #turnBanner.white #turnSwatch { background:#f4f4f2; border-color:#ffffff; }
+  #turnBanner.black #turnSwatch { background:#171614; border-color:#6b6a67; }
+  #turnBanner.none #turnSwatch { display:none; }
+  #mute { margin-left:auto; font-size:20px; text-decoration:none; opacity:.8; } #mute:hover { opacity:1; }
+  #turnBanner.none { color:var(--muted); font-weight:500; font-size:16px; }
+  #sideCol { align-self:stretch; display:flex; flex-direction:column; min-height:0; }
+  .actions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+  .actions button { padding:10px 6px; white-space:nowrap; font-weight:500; }
+  #explore { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; padding:8px 10px; border:1px dashed var(--line); border-radius:6px; }
+  #explore[hidden] { display:none; }
+  #moveNav { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:12px; margin-top:8px; }
+  #flip { width:44px; height:30px; padding:0; display:flex; align-items:center; justify-content:center; background:#4a4845; color:#fff; justify-self:end; }
+  #flip:hover { background:var(--accent); }
+  #moveNav .arrows { display:flex; gap:8px; justify-self:center; }
+  #moveNav .arrows button { width:44px; height:30px; padding:0; display:flex; align-items:center; justify-content:center; background:#4a4845; color:#fff; }
+  #moveNav .arrows button:hover:not(:disabled) { background:var(--accent); }
+  #moveNav .arrows button:disabled { opacity:.35; }
+  .switch { display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none; justify-self:start; }
+  .switch input { position:absolute; opacity:0; width:0; height:0; }
+  .switch .track { position:relative; width:38px; height:22px; border-radius:11px; background:#4a4845; transition:background .18s; flex:none; }
+  .switch .knob { position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#d9d7d4; transition:transform .18s; }
+  .switch input:checked + .track { background:var(--accent); }
+  .switch input:checked + .track .knob { transform:translateX(16px); background:#fff; }
+  .switch input:focus-visible + .track { outline:2px solid var(--accent); outline-offset:2px; }
+  .switch .swlabel { font-size:13px; color:var(--muted); }
+  #boardWrap { position:relative; }
+  #promo { position:absolute; inset:0; z-index:20; background:rgba(0,0,0,.4); }
+  #promo .opt { position:absolute; display:flex; align-items:center; justify-content:center; background:#f3eff9; border-radius:50%; cursor:pointer; padding:0;
+    box-shadow:0 2px 8px rgba(0,0,0,.5); }
+  #promo .opt:hover { background:#ffd86b; }
+  #promo .opt img { width:86%; height:86%; pointer-events:none; }
+  #evalbar.off { display:none; }
+  #evalInfo { margin-top:10px; }
+  #nav { margin-top:auto; padding-top:16px; display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; }
+  #nav button { padding:13px 10px; font-family:var(--font-display); font-size:14px; font-weight:600; }
+  #pos { min-width:54px; text-align:center; }
+  #footer .prefs { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
+  #footer #stats { flex:1 1 100%; }
+  #footer { flex-wrap:wrap; display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:14px; padding-top:10px; border-top:1px solid var(--line); }
+  #reanalyse { margin-left:10px; font-size:12px; }
+  #reanalyse[hidden] { display:none; }
+  button.link { background:none; padding:2px 0; color:var(--muted); font-size:13px; text-decoration:underline; }
+  button.link:hover { background:none; color:var(--text); }
   .list { display:flex; flex-direction:column; gap:6px; max-height:78vh; overflow-y:auto; }
   .card { background:#1d1c1a; border:1px solid transparent; border-radius:6px; padding:8px 10px; cursor:pointer; font-size:13px; }
-  .card:hover { border-color:var(--line); } .card.active { border-color:var(--accent); }
+  .card:hover { border-color:var(--line); }
+  .card.solved { border-color:var(--ok); background:rgba(111,191,115,.07); }
+  .card.failed { border-color:var(--bad); background:rgba(229,100,90,.07); }
+  .card.active { box-shadow:0 0 0 2px var(--accent); }
   .card .top { display:flex; justify-content:space-between; gap:8px; }
-  .card .mark.solved { color:var(--ok); } .card .mark.failed { color:var(--bad); }
-  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:10px; background:#33312e; color:var(--muted); margin-right:4px; }
-  .tag.you { background:#26402a; color:var(--ok); }
   .empty { color:var(--muted); font-size:13px; }
-  /* board theme: classic green (overrides chessboard.js defaults #f0d9b5 / #b58863) */
-  .white-1e1d7 { background-color:#eeeed2; color:#769656; }
-  .black-3c85d { background-color:#769656; color:#eeeed2; }
+  /* board theme: squares come from two variables, set by the theme picker (overrides chessboard.js defaults) */
+  :root { --sq-light:#e4dcf0; --sq-dark:#8b74b8; }
+  .white-1e1d7 { background-color:var(--sq-light); color:var(--sq-dark); }
+  .black-3c85d { background-color:var(--sq-dark); color:var(--sq-light); }
+  #board .check-sq { box-shadow:inset 0 0 0 4px #e5645a, inset 0 0 22px 8px rgba(229,100,90,.65); }
+  #board .hint-sq { box-shadow:inset 0 0 0 4px #f2c94c, inset 0 0 18px 6px rgba(242,201,76,.55); }
+  a.ext { display:inline-flex; align-items:center; gap:5px; text-decoration:none; font-weight:500; }
+  a.ext:hover { text-decoration:underline; }
+  .extbox { display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border:1px solid currentColor; border-radius:4px; }
+  #theme, #pieceSet, #soundSet { font-size:13px; padding:3px 6px; }
+  .panel h2 { flex-wrap:wrap; gap:6px; align-items:center; }
+  #statusFilter { font-size:13px; padding:5px 8px; }
+  #perfFilter { font-family:var(--font-display); font-size:14px; font-weight:600; padding:5px 8px; }
+  /* ---- small screens (kept last so these rules win) ---- */
+  #board { touch-action:none; }   /* dragging a piece must not scroll the page on touch screens */
+  @media (max-width: 1000px) {
+    main { grid-template-columns: 1fr; padding:12px; gap:12px; }
+    #boardCol { order:1; width:100%; max-width:var(--board-col, 100%); margin:0 auto; }
+    #sideCol { order:2; } #listCol { order:3; }
+    #sideCol { align-self:auto; }
+    #nav { margin-top:16px; }
+    .list { max-height:340px; }
+    header { padding:10px 12px; }
+  }
+  @media (max-width: 640px) {
+    header h1 { flex:1 1 100%; margin:0; }
+    input[type=text] { flex:1 1 100%; width:auto; }
+    header label { flex:1 1 calc(50% - 8px); display:flex; align-items:center; gap:6px; }
+    header label select { flex:1; min-width:0; }
+    #go { flex:1 1 60%; } #stop { flex:0 0 auto; }
+    input, select, button { font-size:16px; }                /* 16px stops iOS zooming into form fields */
+    #turnBanner { font-size:19px; }
+    #evalbar { width:30px; }
+    .panel { padding:12px; }
+    #footer .prefs { justify-content:flex-start; }
+  }
+  @media (max-width: 430px) {
+    #moveNav { grid-template-columns:1fr auto; row-gap:8px; }
+    #moveNav .arrows { grid-column:1 / -1; grid-row:1; justify-self:stretch; }
+    #moveNav .arrows button { flex:1; width:auto; }
+  }
+  @media (pointer: coarse) {
+    #moveNav .arrows button, #flip { height:42px; }
+    #promo .opt { box-shadow:0 2px 10px rgba(0,0,0,.6); }
+  }
 </style>
 </head>
 <body>
@@ -59,73 +162,105 @@
   <h1>Chess Puzzles</h1>
   <form id="form" style="display:contents">
     <input type="text" id="username" placeholder="Lichess username" autocomplete="off" required>
-    <label>Blitz <input type="text" class="count" id="nBlitz" value="20" inputmode="numeric" maxlength="3" autocomplete="off"></label>
-    <label>Rapid <input type="text" class="count" id="nRapid" value="10" inputmode="numeric" maxlength="3" autocomplete="off"></label>
+    <label>Blitz <select id="nBlitz" class="count"><option value="5">Last 5 games</option><option value="10">Last 10 games</option><option value="20">Last 20 games</option><option value="50">Last 50 games</option><option value="0">None</option></select></label>
+    <label>Rapid <select id="nRapid" class="count"><option value="5">Last 5 games</option><option value="10">Last 10 games</option><option value="20">Last 20 games</option><option value="50">Last 50 games</option><option value="0">None</option></select></label>
     <button class="primary" id="go" type="submit">Fetch &amp; analyse</button>
+    <button type="button" id="stop" disabled>Stop</button>
   </form>
-  <div id="progress">Enter a Lichess username to extract puzzles from their latest blitz and rapid games.<div id="bar"><div></div></div></div>
+  <div id="progress">Enter a Lichess username to extract puzzles from their latest blitz and rapid games.<button type="button" id="reanalyse" class="link" hidden>Re-analyse</button><div id="bar"><div></div></div></div>
 </header>
 
 <main>
-  <section>
+  <section class="panel" id="listCol"><h2><select id="perfFilter" title="Which puzzles to show"><option value="all">All puzzles</option><option value="blitz">Blitz</option><option value="rapid">Rapid</option></select> <select id="statusFilter" title="Filter by your progress"><option value="all">Any status</option><option value="new">Not attempted</option><option value="solved">Solved</option><option value="failed">Missed</option></select> <span id="cCount"></span></h2><div class="list" id="list"></div></section>
+  <section id="boardCol">
+    <div id="turnBanner" class="none"><span id="turnSwatch"></span><span id="turnText">Select a puzzle</span><button type="button" id="mute" class="link" title="Sound on / off"></button></div>
     <div id="boardRow">
       <div id="evalbar" title="Evaluation (White's view)"><div id="evalFill"></div><span id="evalLabel"></span></div>
       <div id="boardWrap"><div id="board"></div></div>
     </div>
-    <div class="panel" style="margin-top:12px">
+    <div id="moveNav">
+      <label class="switch" title="Show or hide the evaluation bar">
+        <input type="checkbox" id="evalToggle" checked><span class="track"><span class="knob"></span></span><span class="swlabel">Eval bar</span>
+      </label>
+      <div class="arrows" role="group" aria-label="Step through the moves">
+        <button id="mStart" title="Back to the start (Home)" aria-label="Back to the start"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M6 5v14M18 6l-7 6 7 6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button id="mBack" title="One move back (Left arrow)" aria-label="One move back"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button id="mFwd" title="One move forward (Right arrow)" aria-label="One move forward"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button id="mEnd" title="Forward to the latest move (End)" aria-label="Forward to the latest move"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M18 5v14M6 6l7 6-7 6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <button id="flip" type="button" title="Flip the board (F)" aria-label="Flip the board"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M8 4v16M4 8l4-4 4 4M16 20V4M12 16l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+  </section>
+  <section class="panel" id="sideCol">
       <h1 id="title">No puzzle selected</h1>
       <div class="muted" id="meta"></div>
       <div id="status">Fetch a user's games to get puzzles.</div>
-      <div>
-        <button id="hint">Hint</button>
-        <button id="show">Show solution</button>
-        <button id="retry">Retry</button>
-        <button id="undo" title="Step back one move (only after the puzzle is over)">Undo</button>
+      <div class="actions">
+        <button id="hint" title="Tells you which piece to move">💡 Hint</button>
+        <button id="show" title="Reveal the answer (counts as not solved)">Show solution</button>
+        <button id="retry" title="Reset this puzzle and try again">↺ Retry</button>
       </div>
-      <div>
-        <button id="prev">&larr; Prev</button>
-        <button id="next" class="primary">Next &rarr;</button>
+      <div id="explore" hidden>
+        <span class="muted">Puzzle over: move any pieces to explore, and use the arrows under the board (or &larr; &rarr; on the keyboard) to step through the moves.</span>
       </div>
       <div id="solution"></div>
-      <div id="evalInfo" class="muted" style="margin-top:10px"></div>
-      <label class="muted">Eval engine
-        <select id="engineSel"><option value="browser" selected>Browser (WASM)</option><option value="native">Native (server)</option></select>
-      </label>
-      <div id="stats" class="muted"></div>
-      <button id="resetStats" title="Forget which puzzles you have already attempted">Reset progress</button>
-    </div>
+      <div id="evalInfo" class="muted"></div>
+      <div id="nav">
+        <button id="prev" title="Previous puzzle">Previous puzzle</button>
+        <span id="pos" class="muted"></span>
+        <button id="next" class="primary" title="Next puzzle">Next puzzle</button>
+      </div>
+      <div id="footer">
+        <span id="stats" class="muted"></span>
+        <span class="prefs">
+          <label class="muted">Board <select id="theme"></select></label>
+          <label class="muted">Pieces <select id="pieceSet"></select></label>
+          <label class="muted">Sound <select id="soundSet"></select></label>
+          <button id="resetStats" class="link" title="Forget which puzzles you have already attempted">Reset progress</button>
+        </span>
+      </div>
   </section>
-  <section class="panel"><h2>Blitz <span id="cBlitz"></span></h2><div class="list" id="listBlitz"></div></section>
-  <section class="panel"><h2>Rapid <span id="cRapid"></span></h2><div class="list" id="listRapid"></div></section>
 </main>
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 <script src="engines.js"></script>
+<script src="analysis.js"></script>
+<script src="sounds.js"></script>
 <script>
 const byPerf = { blitz: [], rapid: [] };
 let cur = null, game, board, solved = false, attempted = false, free = false;  // free: puzzle over, board is open for exploring
 let sol = [], step = 0, busy = false;   // sol: verified UCI moves, solver first, alternating with opponent replies
-let pollTimer = null;
 
 const EVAL_DEPTH = 18;
-function engineKind() { return $('#engineSel').val(); }
+function engineKind() { return 'browser'; }
 
 function showEval(r, err) {
   const info = $('#evalInfo');
   if (err || !r) { info.text(`Eval failed (${engineKind()}): ${(err && err.message) || 'no result'}`); return; }
   const share = Evaluator.whiteShare(r);
   $('#evalFill').css('height', Math.round(share * 100) + '%');
-  $('#evalbar').toggleClass('flip', !!cur && cur.turn === 'black');   // follows the board orientation
+  $('#evalbar').toggleClass('flip', board.orientation() === 'black');   // follows the board orientation
   $('#evalLabel').text(Evaluator.label(r)).toggleClass('atBottom', share >= 0.5).toggleClass('atTop', share < 0.5);
   info.text(r.over ? 'Game over in this position.' :
     `${r.engine === 'native' ? 'Native' : 'Browser'} · depth ${r.depth}${r.done ? '' : '...'}` +
     (r.ms ? ` · ${(r.ms / 1000).toFixed(1)}s` : '') + (r.best_san ? ` · best ${r.best_san}` : ''));
 }
 
+let evalOn = true;
+try { evalOn = localStorage.getItem('evalBar') !== '0'; } catch (e) {}
+function applyEvalToggle() { $('#evalbar').toggleClass('off', !evalOn); $('#evalToggle').prop('checked', evalOn); }
+$('#evalToggle').on('change', function () {
+  evalOn = this.checked; try { localStorage.setItem('evalBar', evalOn ? '1' : '0'); } catch (e) {}
+  applyEvalToggle();
+  if (evalOn) updateEval(); else { Evaluator.cancel(); $('#evalInfo').text(''); }
+  fitBoard();
+});
+
 function updateEval() {   // only once the puzzle is over, so it never gives the answer away
   if (!free || !game) return;
+  if (!evalOn) { Evaluator.cancel(); return; }
   $('#evalbar').addClass('on');
   if (game.game_over()) {
     Evaluator.cancel();
@@ -140,7 +275,34 @@ function totalSolverMoves() { return Math.ceil(sol.length / 2); }
 
 function loadStats() { try { return JSON.parse(localStorage.getItem('puzzleStats')) || {}; } catch (e) { return {}; } }
 function saveStats(s) { try { localStorage.setItem('puzzleStats', JSON.stringify(s)); } catch (e) {} }
-function setStatus(msg, cls) { $('#status').text(msg).removeClass('ok bad').addClass(cls || ''); }
+function updateCheck() {   // red glow on the king that is in check
+  $('#board .check-sq').removeClass('check-sq');
+  if (!game || !game.in_check()) return;
+  const side = game.turn();
+  game.board().forEach((row, r) => row.forEach((pc, c) => {
+    if (pc && pc.type === 'k' && pc.color === side) $('#board .square-' + 'abcdefgh'[c] + (8 - r)).addClass('check-sq');
+  }));
+}
+
+function updateButtons() {   // only offer what makes sense right now
+  const over = !!cur && free;
+  $('#hint').prop('disabled', !cur || over);
+  $('#show').prop('disabled', !cur || over);
+  $('#retry').prop('disabled', !cur);
+  $('#explore').prop('hidden', !over);
+  const canBack = over && game && game.history().length > 0, canFwd = over && redo.length > 0;
+  $('#mStart, #mBack').prop('disabled', !canBack); $('#mFwd, #mEnd').prop('disabled', !canFwd);
+}
+
+function updateTurn() {   // big "White to move" banner above the board
+  updateButtons(); updateCheck();
+  const b = $('#turnBanner').removeClass('white black none');
+  if (!cur || !game) { b.addClass('none'); $('#turnText').text('Select a puzzle'); return; }
+  const color = cur.turn;   // always the side the puzzle is for, also after it ends
+  b.addClass(color); $('#turnText').text(color === 'white' ? 'White to move' : 'Black to move');
+}
+
+function setStatus(msg, cls) { $('#status').text(msg).removeClass('ok bad win').addClass(cls || ''); }
 
 function renderStats() {
   const s = loadStats(), all = byPerf.blitz.concat(byPerf.rapid);
@@ -154,20 +316,19 @@ function gameLabel(p) {
 
 function renderLists() {
   const stats = loadStats();
-  for (const perf of ['blitz', 'rapid']) {
-    const P = perf === 'blitz' ? 'Blitz' : 'Rapid', list = $('#list' + P).empty();
-    $('#c' + P).text(byPerf[perf].length + ' puzzles');
-    if (!byPerf[perf].length) list.append($('<div class="empty">').text('No puzzles yet.'));
-    byPerf[perf].forEach(p => {
+  {
+    const all = visiblePuzzles(), list = $('#list').empty();
+    $('#cCount').text(all.length + (all.length === 1 ? ' puzzle' : ' puzzles'));
+    const ci = cur ? all.findIndex(p => p.id === cur.id) : -1;
+    $('#pos').text(ci >= 0 ? `${ci + 1} / ${all.length}` : '');
+    $('#prev, #next').prop('disabled', all.length < 2);
+    if (!all.length) list.append($('<div class="empty">').text($('#statusFilter').val() === 'all' && $('#perfFilter').val() === 'all' ? 'No puzzles yet.' : 'No puzzles match these filters.'));
+    all.forEach(p => {
       const st = stats[p.id] && stats[p.id].first;
-      const card = $('<div class="card">').attr('data-id', p.id).toggleClass('active', !!cur && cur.id === p.id);
-      card.append($('<div class="top">')
-        .append($('<span>').text(`vs ${p.opponent} · ${p.time_control}`))
-        .append($('<span class="mark">').addClass(st || '').text(st === 'solved' ? '✓' : st === 'failed' ? '✗' : '')));
-      card.append($('<div class="muted">').text(`${p.date} · move ${p.move_number} · ${p.turn === 'white' ? 'White' : 'Black'} to move`));
-      card.append($('<div>')
-        .append($('<span class="tag">').addClass(p.solver_is_player ? 'you' : '').text(p.solver_is_player ? 'your move' : "opponent's move"))
-        .append($('<span class="tag">').text(`${p.only_moves} only-moves`)));
+      const card = $('<div class="card">').attr('data-id', p.id).addClass(st || '').toggleClass('active', !!cur && cur.id === p.id)
+        .attr('title', st === 'solved' ? 'Solved on the first try' : st === 'failed' ? 'Missed on the first try' : 'Not attempted yet');
+      card.append($('<div class="top">').append($('<span>').text(`vs ${p.opponent} · ${p.time_control}`)));
+      card.append($('<div class="muted">').text(`${p.date} · move ${p.move_number}`));
       list.append(card);
     });
   }
@@ -176,8 +337,8 @@ function renderLists() {
 function loadPuzzle(p) {
   cur = p;
   game = new Chess(p.fen);
-  solved = false; attempted = false; busy = false; free = false;
-  Evaluator.cancel(); $('#evalbar').removeClass('on'); $('#evalInfo').text('');
+  solved = false; attempted = false; busy = false; free = false; redo = []; hidePromo();
+  clearHint(); Evaluator.cancel(); $('#evalbar').removeClass('on'); $('#evalInfo').text('');
   sol = (p.solution && p.solution.length) ? p.solution : [p.best];
   step = 0;
   board.orientation(p.turn);
@@ -185,16 +346,27 @@ function loadPuzzle(p) {
   $('#title').text(gameLabel(p));
   $('#meta').empty()
     .append(document.createTextNode(`${p.white} vs ${p.black} (${p.date}) · `))
-    .append($('<a target="_blank" rel="noopener">').attr('href', p.game_url).text('open game on Lichess'));
+    .append($('<a target="_blank" rel="noopener">').attr('href', p.game_url).addClass('ext').html('Open game on Lichess <span class="extbox"><svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M3 9 9 3M4.5 3H9v4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'));
   $('#solution').empty();
-  setStatus(totalSolverMoves() > 1 ? `Find the best move (1 of ${totalSolverMoves()}).` : 'Find the best move.');
-  renderStats(); renderLists();
+  setStatus("What's the best move?");
+  updateTurn(); renderStats(); renderLists();
+}
+
+function clearHint() { $('#board .hint-sq').removeClass('hint-sq'); }
+
+function visiblePuzzles() {   // what the list (and Prev / Next) shows: all, or one speed
+  const f = $('#perfFilter').val(), sf = $('#statusFilter').val(), stats = loadStats();
+  const list = f === 'blitz' ? byPerf.blitz : f === 'rapid' ? byPerf.rapid : byPerf.blitz.concat(byPerf.rapid);
+  if (sf === 'all') return list;
+  return list.filter(p => { const st = stats[p.id] && stats[p.id].first; return sf === 'new' ? !st : st === sf; });
 }
 
 function neighbour(delta) {
   if (!cur) return;
-  const list = byPerf[cur.perf], i = list.findIndex(p => p.id === cur.id);
-  if (list.length) loadPuzzle(list[(i + delta + list.length) % list.length]);
+  const list = visiblePuzzles(), i = list.findIndex(p => p.id === cur.id);
+  if (!list.length) return;
+  if (i < 0) return loadPuzzle(list[delta > 0 ? 0 : list.length - 1]);   // current puzzle is filtered out: jump into the list
+  loadPuzzle(list[(i + delta + list.length) % list.length]);
 }
 
 function onDragStart(source, piece) {
@@ -203,54 +375,137 @@ function onDragStart(source, piece) {
   return piece.startsWith(cur.turn === 'white' ? 'w' : 'b');
 }
 
+function isPromotion(source, target) {
+  const pc = game.get(source);
+  return !!pc && pc.type === 'p' && (target[1] === '8' || target[1] === '1') &&
+    game.moves({ square: source, verbose: true }).some(m => m.to === target);
+}
+
 function onDrop(source, target) {
+  if (isPromotion(source, target)) { showPromo(source, target); return 'snapback'; }   // ask which piece first
+  return doMove(source, target, undefined);
+}
+
+function hidePromo() { $('#promo').remove(); }
+function showPromo(source, target) {   // four buttons stacked from the promotion square, like Lichess
+  hidePromo();
+  const color = game.turn(), sq = $('#board .square-' + target), wrap = $('#boardWrap');
+  const size = sq.outerWidth(), off = { left: sq.offset().left - wrap.offset().left, top: sq.offset().top - wrap.offset().top };
+  const down = off.top < wrap.height() / 2;
+  const box = $('<div id="promo">').on('click', (e) => { if (e.target.id === 'promo') { hidePromo(); board.position(game.fen()); } });
+  const names = { q: 'Queen', n: 'Knight', r: 'Rook', b: 'Bishop' };
+  ['q', 'n', 'r', 'b'].forEach((pt, i) => {
+    $('<button class="opt" type="button">').attr('title', names[pt])
+      .css({ width: size, height: size, left: off.left, top: down ? off.top + i * size : off.top - i * size })
+      .append($('<img alt="">').attr('src', `vendor/pieces/${PIECE_SETS[pieceSet]}/${color}${pt.toUpperCase()}.svg`))
+      .on('click', () => { hidePromo(); doMove(source, target, pt); board.position(game.fen()); })
+      .appendTo(box);
+  });
+  wrap.append(box);
+}
+
+function doMove(source, target, promo) {
   const p = cur;
+  clearHint();
   if (free) {  // exploring after the puzzle: any legal move, no checking against the solution
-    if (game.move({ from: source, to: target, promotion: 'q' }) === null) return 'snapback';
-    updateEval();
+    const fm = game.move({ from: source, to: target, promotion: promo });
+    if (fm === null) return 'snapback';
+    redo = [];   // a new move replaces whatever was ahead
+    Sounds.play(Sounds.kindOf(fm));
+    updateTurn(); updateEval();
     return;
   }
-  const mv = game.move({ from: source, to: target, promotion: 'q' });
+  const mv = game.move({ from: source, to: target, promotion: promo });
   if (mv === null) return 'snapback';
+  updateCheck();
   const uci = mv.from + mv.to + (mv.promotion || '');
   const stats = loadStats();
   if (uci === sol[step]) {
     step++;
+    Sounds.play(Sounds.kindOf(mv));
     if (step >= sol.length) {
+      setTimeout(() => Sounds.play('success'), 220);
       if (!attempted) { stats[p.id] = { first: 'solved' }; saveStats(stats); }
       solved = true; free = true;
-      setStatus('Puzzle solved! The board is free now - move any pieces to explore (Undo to step back).', 'ok');
-      showSolution(); renderStats(); renderLists();
+      setStatus('Puzzle solved', 'ok win');
+      updateTurn(); showSolution(); renderStats(); renderLists();
     } else {
       busy = true;
       setStatus('Correct! Opponent replies...', 'ok');
       const reply = sol[step];
       setTimeout(() => {
         if (cur !== p || free) return;
-        game.move(uciMove(reply));
+        Sounds.play(Sounds.kindOf(game.move(uciMove(reply)))); updateCheck();
         board.position(game.fen());
         step++;
         busy = false;
-        setStatus(`Correct! Now find the next move (${step / 2 + 1} of ${totalSolverMoves()}).`, 'ok');
+        setStatus('Correct! Keep going.', 'ok');
       }, 500);
     }
   } else {
     if (!attempted) { stats[p.id] = { first: 'failed' }; saveStats(stats); }
     attempted = true;
-    game.undo();
+    Sounds.play('error');
+    game.undo(); updateCheck();
     setStatus(`${mv.san} is not the best move. Try again.`, 'bad');
     renderStats(); renderLists();
     return 'snapback';
   }
 }
 
+function flipBoard() {
+  hidePromo();
+  board.flip();
+  $('#evalbar').toggleClass('flip', board.orientation() === 'black');
+  updateCheck();
+}
+$('#flip').on('click', flipBoard);
+
 function onSnapEnd() { board.position(game.fen()); }
+
+// Stepping through the moves once the puzzle is over: undo() walks back, `redo` holds the moves we stepped back over.
+let redo = [];
+function stepBack() {
+  const m = game.undo(); if (!m) return null;
+  redo.push({ from: m.from, to: m.to, promotion: m.promotion });
+  return m;
+}
+function stepForward() { return redo.length ? game.move(redo.pop()) : null; }
+function navigate(kind) {
+  if (!free || !game) return;
+  hidePromo();
+  let m = null, n = null;
+  if (kind === 'back') m = stepBack();
+  else if (kind === 'fwd') m = stepForward();
+  else if (kind === 'start') { while ((n = stepBack())) m = n; }
+  else if (kind === 'end') { while ((n = stepForward())) m = n; }
+  if (!m) return;
+  Sounds.play(Sounds.kindOf(m));
+  board.position(game.fen()); updateTurn(); updateEval();
+}
+$('#mStart').on('click', () => navigate('start')); $('#mBack').on('click', () => navigate('back'));
+$('#mFwd').on('click', () => navigate('fwd'));     $('#mEnd').on('click', () => navigate('end'));
+$(document).on('keydown', (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  const t = e.target, tag = t.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+  if (e.key === 'Escape' && $('#promo').length) { hidePromo(); board.position(game.fen()); return; }
+  if (e.key === 'f' || e.key === 'F') { flipBoard(); return; }
+  const k = { ArrowLeft: 'back', ArrowRight: 'fwd', Home: 'start', End: 'end' }[e.key];
+  if (k && free) { e.preventDefault(); navigate(k); }
+});
+$(document).on('change', 'select, #evalToggle', function () { this.blur(); });   // so the arrow keys step moves instead of changing a dropdown
+
+function fmtCp(cp) {   // centipawns -> pawns ("+1.25"); engine mate scores (about +-10000) -> "Mate in N"
+  if (Math.abs(cp) >= 9000) return (cp > 0 ? '+' : '-') + 'Mate in ' + (10000 - Math.abs(cp));
+  return (cp > 0 ? '+' : '') + (cp / 100).toFixed(2);
+}
 
 function showSolution() {
   const p = cur;
   $('#solution').empty()
-    .append($('<div>').text(`Best: ${p.best_san} (${p.best_cp > 0 ? '+' : ''}${p.best_cp} cp)`))
-    .append($('<div>').text(`Next best: ${p.second_san} (${p.second_cp > 0 ? '+' : ''}${p.second_cp} cp)`))
+    .append($('<div>').text(`Best: ${p.best_san} (${fmtCp(p.best_cp)})`))
+    .append($('<div>').text(`Next best: ${p.second_san} (${fmtCp(p.second_cp)})`))
     .append($('<div>').text(`Solution: ${p.solution_san || p.line_san}`))
     .append($('<div style="margin-top:8px">').text(playedText(p)))
     .append($('<div>').text(resultText(p)));
@@ -273,24 +528,47 @@ function resultText(p) {
   return `Game result: ${p.result}${label ? ' - ' + label : ''}${how}`;
 }
 
+const THEMES = {   // name: [light square, dark square]
+  Amethyst:   ['#e4dcf0', '#8b74b8'],
+  Lagoon:     ['#d9ecea', '#4f9096'],
+  Terracotta: ['#f2e1cd', '#c4775a'],
+  Slate:      ['#cdd5de', '#617387'],
+  Rose:       ['#f4dde2', '#b8687c'],
+  Midnight:   ['#9fb0cf', '#3d4f7a'],
+};
+function applyTheme(name) {
+  const t = THEMES[name] || THEMES.Amethyst;
+  document.documentElement.style.setProperty('--sq-light', t[0]);
+  document.documentElement.style.setProperty('--sq-dark', t[1]);
+}
+Object.keys(THEMES).forEach(n => $('#theme').append($('<option>').val(n).text(n)));
+let savedTheme = 'Amethyst';
+try { savedTheme = localStorage.getItem('boardTheme') || savedTheme; } catch (e) {}
+if (!THEMES[savedTheme]) savedTheme = 'Amethyst';
+$('#theme').val(savedTheme); applyTheme(savedTheme);
+$('#theme').on('change', function () { applyTheme(this.value); try { localStorage.setItem('boardTheme', this.value); } catch (e) {} });
+
+function showMute() { $('#mute').text(Sounds.isMuted() ? '🔇' : '🔊'); }
+$('#mute').on('click', () => { Sounds.setMuted(!Sounds.isMuted()); showMute(); if (!Sounds.isMuted()) Sounds.play('move'); });
+showMute();
+
 $('#hint').on('click', () => {
   if (!cur || solved || free || step >= sol.length) return;
-  setStatus(`Hint: move the piece on ${sol[step].slice(0, 2)}.`);
+  clearHint(); $('#board .square-' + sol[step].slice(0, 2)).addClass('hint-sq');
+  setStatus('Hint: move the highlighted piece.');
 });
 $('#show').on('click', () => {
   if (!cur) return;
   if (!attempted && !solved) { const s = loadStats(); s[cur.id] = { first: 'failed' }; saveStats(s); }
   attempted = true; free = true; busy = false;
-  setStatus(`Solution: ${cur.solution_san || cur.best_san}. The board is free now - move any pieces to explore.`);
-  showSolution(); renderStats(); renderLists();
+  if (step < sol.length) {   // play the next move of the solution on the board; showSolution() then evaluates the new position
+    const mv = game.move(uciMove(sol[step]));
+    if (mv) { Sounds.play(Sounds.kindOf(mv)); board.position(game.fen()); step++; }
+  }
+  setStatus('Solution shown');
+  updateTurn(); showSolution(); renderStats(); renderLists();
 });
 $('#retry').on('click', () => cur && loadPuzzle(cur));
-$('#undo').on('click', () => { if (free && game.undo()) { board.position(game.fen()); updateEval(); } });
-try { const saved = localStorage.getItem('evalEngine'); if (saved === 'native' || saved === 'browser') $('#engineSel').val(saved); } catch (e) {}
-$('#engineSel').on('change', () => {
-  try { localStorage.setItem('evalEngine', engineKind()); } catch (e) {}
-  updateEval();
-});
 $('#resetStats').on('click', () => {
   if (!confirm('Clear the solved / failed marks for all puzzles?')) return;
   try { localStorage.removeItem('puzzleStats'); } catch (e) {}
@@ -299,6 +577,7 @@ $('#resetStats').on('click', () => {
 });
 $('#prev').on('click', () => neighbour(-1));
 $('#next').on('click', () => neighbour(1));
+$('#perfFilter, #statusFilter').on('change', renderLists);
 $(document).on('click', '.card', function () {
   const id = $(this).attr('data-id');
   const p = byPerf.blitz.concat(byPerf.rapid).find(x => x.id === id);
@@ -306,71 +585,164 @@ $(document).on('click', '.card', function () {
 });
 
 function setProgress(msg, frac, bad) {
-  $('#progress').toggleClass('bad', !!bad);
+  $('#progress').toggleClass('bad', !!bad); $('#reanalyse').prop('hidden', true);
   $('#progress').contents().first().replaceWith(document.createTextNode(msg));
+  $('#bar').css('visibility', frac > 0 ? 'visible' : 'hidden');
   $('#bar > div').css('width', Math.round((frac || 0) * 100) + '%');
 }
 
-async function poll(jobId) {
-  try {
-    const r = await fetch('/api/job/' + jobId, { cache: 'no-store' });
-    const j = await r.json();
-    if (j.error && j.status !== 'error') throw new Error(j.error);
-    byPerf.blitz = j.puzzles.blitz; byPerf.rapid = j.puzzles.rapid;
-    const n = byPerf.blitz.length + byPerf.rapid.length;
-    if (j.status === 'error') {
-      setProgress(j.error, 0, true); $('#go').prop('disabled', false); renderLists(); return;
-    }
-    if (j.phase === 'fetching games') setProgress(`Fetching ${j.username}'s games from Lichess...`, 0.02);
-    else if (j.status === 'running') setProgress(`Analysing games: ${j.done} / ${j.total} done · ${n} puzzles found`, j.total ? j.done / j.total : 0);
-    if (j.status === 'done') {
-      const errs = j.games.filter(g => g.error).length;
-      setProgress(j.total ? `Done: ${j.total} games analysed (${j.fetched.blitz || 0} blitz, ${j.fetched.rapid || 0} rapid) · ${n} puzzles` +
-        (errs ? ` · ${errs} game(s) failed` : '') : `No blitz or rapid games found for ${j.username}.`, 1);
-      $('#go').prop('disabled', false);
-    }
-    if (!cur && n) loadPuzzle(byPerf.blitz[0] || byPerf.rapid[0]); else renderLists();
-    renderStats();
-    if (j.status === 'running') pollTimer = setTimeout(() => poll(jobId), 1000);
-  } catch (e) {
-    setProgress('Lost contact with the server: ' + e.message, 0, true); $('#go').prop('disabled', false);
+let run = null;   // the current in-browser analysis (Analysis.run handle)
+
+let lastSt = null, ticker = null;
+const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+function onProgress(st) {
+  lastSt = st;
+  if (st.phase !== 'analysing') renderProgress();
+  if (st.phase === 'analysing' && !ticker) ticker = setInterval(renderProgress, 500);
+  if (st.phase === 'done' && ticker) { clearInterval(ticker); ticker = null; }
+  $('#stop').prop('disabled', st.phase === 'done');
+}
+
+function renderProgress() {
+  const st = lastSt;
+  if (!st) return;
+  const n = st.puzzles.blitz.length + st.puzzles.rapid.length;
+  if (st.phase === 'fetching games') setProgress('Fetching games from Lichess...', 0.02);
+  else if (st.phase === 'starting engines') setProgress(`Starting ${st.workers} Stockfish workers in your browser...`, 0.03);
+  else if (st.phase === 'analysing') {
+    const elapsed = (performance.now() - st.startedAt) / 1000;
+    const frac = st.totalPlies ? st.donePlies / st.totalPlies : 0;
+    setProgress(`Analysing: ${Math.floor(frac * 100)}% · ${st.donePlies} / ${st.totalPlies} positions · ${st.done} / ${st.total} games · ${n} puzzles · ${fmtTime(elapsed)} elapsed`, frac);
+  } else if (st.phase === 'done') {
+    const fresh = st.total - st.cached;
+    setProgress(st.total ? `Done: ${st.total} games (${st.fetched.blitz || 0} blitz, ${st.fetched.rapid || 0} rapid) · ${n} puzzles` +
+      (st.cached ? ` · ${st.cached} from saved results` : '') + (fresh ? ` · ${fresh} analysed in ${fmtTime((performance.now() - st.startedAt) / 1000)}` : '') +
+      (st.errors ? ` · ${st.errors} game(s) failed` : '') : 'No blitz or rapid games found for that user.', 1);
+    $('#reanalyse').prop('hidden', !st.cached);
   }
 }
 
-// count boxes: digits only; blank or out-of-range values are fixed up (0-100) when you leave the box or submit
-$('.count').on('input', function () { this.value = this.value.replace(/\D/g, ''); });
-function countOf(sel) { const n = parseInt($(sel).val(), 10); const v = Number.isNaN(n) ? 0 : Math.min(100, Math.max(0, n)); $(sel).val(v); return v; }
-$('.count').on('blur', function () { countOf(this); });
+function onUpdate(puzzles) {
+  byPerf.blitz = puzzles.blitz; byPerf.rapid = puzzles.rapid;
+  if (!cur && (byPerf.blitz.length || byPerf.rapid.length)) loadPuzzle(byPerf.blitz[0] || byPerf.rapid[0]);
+  else renderLists();
+  renderStats();
+}
 
-$('#form').on('submit', async (ev) => {
-  ev.preventDefault();
-  clearTimeout(pollTimer);
+// Results are cached in the browser (localStorage) for 24 hours, one entry per game (and per username, since a puzzle's
+// "your move / opponent's move" depends on who is asking). Changing the number of games only analyses the games not seen yet.
+// Bump CACHE_VERSION whenever the puzzle rules or the engine settings change, so old results are never reused.
+const CACHE_TTL = 24 * 3600 * 1000, CACHE_VERSION = 'v1-d18', CACHE_PREFIX = 'gameCache:';
+const cacheKey = (u, gameId) => `${CACHE_PREFIX}${CACHE_VERSION}:${u.toLowerCase()}:${gameId}`;
+function cacheEntries() {
+  const out = [];
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.startsWith(CACHE_PREFIX) || k.startsWith('puzzleCache:'))) out.push(k); } } catch (e) {}
+  return out;
+}
+function cacheGet(key) {
+  try {
+    const e = JSON.parse(localStorage.getItem(key));
+    if (e && Date.now() - e.t < CACHE_TTL) return e;
+    localStorage.removeItem(key);
+  } catch (e) {}
+  return null;
+}
+function cachePrune() {   // drop expired, old-version and old-format entries
+  cacheEntries().forEach(k => { if (!k.startsWith(CACHE_PREFIX + CACHE_VERSION + ':') || !cacheGet(k)) { try { localStorage.removeItem(k); } catch (e) {} } });
+}
+function cachePut(key, entry) {
+  const save = () => localStorage.setItem(key, JSON.stringify(entry));
+  try { save(); } catch (e) {
+    try {   // storage full: drop the oldest cached games and try once more
+      cacheEntries().map(k => [k, (JSON.parse(localStorage.getItem(k)) || {}).t || 0]).sort((x, y) => x[1] - y[1]).slice(0, 25)
+        .forEach(([k]) => localStorage.removeItem(k));
+      save();
+    } catch (e2) {}
+  }
+}
+try { const u = localStorage.getItem('lastUsername'); if (u && /^[A-Za-z0-9_-]{2,30}$/.test(u)) $('#username').val(u); } catch (e) {}
+$('#nBlitz').val('20'); $('#nRapid').val('10');   // defaults, then whatever was chosen last time
+try { const c = JSON.parse(localStorage.getItem('gameCounts')); if (c) { for (const [sel, v] of [['#nBlitz', c.b], ['#nRapid', c.r]]) if ($(sel + ' option[value="' + v + '"]').length) $(sel).val(String(v)); } } catch (e) {}
+cachePrune();
+
+$('#stop').on('click', () => {
+  if (!run) return;
+  run.cancel(); clearInterval(ticker); ticker = null;
+  if (lastSt) { const n = lastSt.puzzles.blitz.length + lastSt.puzzles.rapid.length;
+    setProgress(`Stopped at ${Math.floor(100 * lastSt.donePlies / Math.max(1, lastSt.totalPlies))}% · ${lastSt.done} / ${lastSt.total} games · ${n} puzzles kept`, lastSt.totalPlies ? lastSt.donePlies / lastSt.totalPlies : 0); }
+  $('#stop').prop('disabled', true);
+});
+async function startRun(force) {
+  if (run) run.cancel();                       // a new request replaces a running one
+  lastSt = null; clearInterval(ticker); ticker = null; run = null;
   byPerf.blitz = []; byPerf.rapid = []; cur = null;
   renderLists();
   $('#title').text('No puzzle selected'); $('#meta').empty(); $('#solution').empty();
   board.position('start', false); setStatus('Waiting for the first puzzle...');
-  $('#go').prop('disabled', true);
+  $('#stop').prop('disabled', true);
   setProgress('Starting...', 0);
+  const username = $('#username').val().trim();
+  if (!/^[A-Za-z0-9_-]{2,30}$/.test(username)) { setProgress('Enter a valid Lichess username', 0, true); return; }
+  try { localStorage.setItem('lastUsername', username); } catch (e) {}   // remembered for next visit
+  const blitz = parseInt($('#nBlitz').val(), 10) || 0, rapid = parseInt($('#nRapid').val(), 10) || 0;
+  try { localStorage.setItem('gameCounts', JSON.stringify({ b: blitz, r: rapid })); } catch (e) {}
+  if (!blitz && !rapid) { setProgress('Choose how many blitz or rapid games to analyse.', 0, true); return; }
+  const cache = { get: (id) => (force ? null : (cacheGet(cacheKey(username, id)) || {}).puzzles || null),
+                  put: (id, puzzles) => cachePut(cacheKey(username, id), { t: Date.now(), puzzles }) };
+  const mine = run = Analysis.run({ username, blitz, rapid, cache, onProgress, onUpdate });
   try {
-    const r = await fetch('/api/analyse', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: $('#username').val().trim(), blitz: countOf('#nBlitz'), rapid: countOf('#nRapid') }),
-    });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error || r.status);
-    poll(j.job);
+    await mine.promise;
   } catch (e) {
-    setProgress(String(e.message || e), 0, true); $('#go').prop('disabled', false);
+    if (!(e instanceof Analysis.Cancelled) && run === mine) setProgress(String(e.message || e), 0, true);
   }
-});
+}
+$('#form').on('submit', (ev) => { ev.preventDefault(); startRun(false); });
+$('#reanalyse').on('click', () => startRun(true));
 
-board = Chessboard('board', {
-  draggable: true, position: 'start',
-  pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
-  onDragStart, onDrop, onSnapEnd,
+const PIECE_SETS = {   // label: folder in vendor/pieces (licences in vendor/pieces/LICENSES.md)
+  Classic: 'cburnett', Merida: 'merida', Modern: 'mpchess', Celtic: 'celtic', Minimal: 'kiwen-suwi',
+};
+let pieceSet = 'Classic';
+try { const v = localStorage.getItem('pieceSet'); if (v && PIECE_SETS[v]) pieceSet = v; } catch (e) {}
+function makeBoard(position, orientation) {
+  return Chessboard('board', {
+    draggable: true, position, orientation,
+    pieceTheme: (piece) => `vendor/pieces/${PIECE_SETS[pieceSet]}/${piece}.svg`,
+    onDragStart, onDrop, onSnapEnd,
+  });
+}
+board = makeBoard('start', 'white');
+Object.keys(PIECE_SETS).forEach(n => $('#pieceSet').append($('<option>').val(n).text(n)));
+$('#pieceSet').val(pieceSet).on('change', function () {   // chessboard.js can't swap piece images in place: rebuild the board where it stands
+  pieceSet = this.value; try { localStorage.setItem('pieceSet', pieceSet); } catch (e) {}
+  const fen = game ? game.fen() : 'start', side = board.orientation();
+  board.destroy(); board = makeBoard(fen, side); fitBoard();
+  if (cur && !free) { clearHint(); }
 });
-$(window).on('resize', () => board.resize());
-renderLists(); renderStats();
+Sounds.sets.forEach(n => $('#soundSet').append($('<option>').val(n).text(n)));
+$('#soundSet').val(Sounds.currentSet()).on('change', function () { Sounds.setSet(this.value); if (!Sounds.isMuted()) { Sounds.play('move'); setTimeout(() => Sounds.play('capture'), 280); } });
+// Fit the board to the window: the board column gets the largest size that keeps the board, the banner, the lists and the
+// buttons on screen without scrolling (limited by the window height, or by the width left beside the two side columns).
+function fitBoard() {
+  if (window.innerWidth <= 1000) {   // stacked layout: as wide as the screen, but never taller than the screen
+    const barW = evalOn ? (window.innerWidth <= 640 ? 38 : 46) : 0;
+    const px = Math.max(300, Math.min($('main').width(), window.innerHeight - 120 + barW));
+    document.documentElement.style.setProperty('--board-col', Math.floor(px) + 'px');
+    board.resize(); return;
+  }
+  const top = $('#boardRow')[0].getBoundingClientRect().top + window.scrollY;
+  const navH = $('#moveNav').outerHeight(true) || 0, barW = evalOn ? 46 : 0;
+  const byHeight = window.innerHeight - top - 20 - navH + barW;              // board is square; the eval bar and its gap add to the column width
+  const byWidth = $('main').width() - 290 - 280 - 32;                        // list column, controls column (min), gaps
+  const px = Math.max(340, Math.min(byHeight, byWidth));
+  document.documentElement.style.setProperty('--board-col', Math.floor(px) + 'px');
+  board.resize();
+}
+$(window).on('resize', fitBoard);
+if (window.ResizeObserver) new ResizeObserver(fitBoard).observe(document.querySelector('header'));   // header grows while progress shows
+applyEvalToggle(); fitBoard();
+renderLists(); renderStats(); updateButtons();
 </script>
 </body>
 </html>
