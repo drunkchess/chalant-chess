@@ -19,7 +19,7 @@
   header h1 { font-family:var(--font-display); font-size:19px; font-weight:700; letter-spacing:-.2px; margin:0 8px 0 0; }
   header label { font-size:13px; color:var(--muted); }
   input { background:#1d1c1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; }
-  input[type=text] { width:200px; } select.count { padding:7px 8px; }
+  input[type=text] { width:200px; } select.count, #source { padding:7px 8px; }
   #progress { flex:1 1 100%; font-size:13px; color:var(--muted); }
   #progress.bad { color:var(--bad); }
   #bar { visibility:hidden; height:4px; background:#1d1c1a; border-radius:2px; margin-top:6px; overflow:hidden; }
@@ -161,13 +161,14 @@
 <header>
   <h1>Chess Puzzles</h1>
   <form id="form" style="display:contents">
+    <select id="source" title="Where your games are"><option value="lichess">Lichess</option><option value="chesscom">Chess.com</option></select>
     <input type="text" id="username" placeholder="Lichess username" autocomplete="off" required>
     <label>Blitz <select id="nBlitz" class="count"><option value="5">Last 5 games</option><option value="10">Last 10 games</option><option value="20">Last 20 games</option><option value="50">Last 50 games</option><option value="0">None</option></select></label>
     <label>Rapid <select id="nRapid" class="count"><option value="5">Last 5 games</option><option value="10">Last 10 games</option><option value="20">Last 20 games</option><option value="50">Last 50 games</option><option value="0">None</option></select></label>
     <button class="primary" id="go" type="submit">Fetch &amp; analyse</button>
     <button type="button" id="stop" disabled>Stop</button>
   </form>
-  <div id="progress">Enter a Lichess username to extract puzzles from their latest blitz and rapid games.<button type="button" id="reanalyse" class="link" hidden>Re-analyse</button><div id="bar"><div></div></div></div>
+  <div id="progress">Choose Lichess or Chess.com, enter a username, and puzzles are extracted from their latest blitz and rapid games.<button type="button" id="reanalyse" class="link" hidden>Re-analyse</button><div id="bar"><div></div></div></div>
 </header>
 
 <main>
@@ -346,7 +347,7 @@ function loadPuzzle(p) {
   $('#title').text(gameLabel(p));
   $('#meta').empty()
     .append(document.createTextNode(`${p.white} vs ${p.black} (${p.date}) · `))
-    .append($('<a target="_blank" rel="noopener">').attr('href', p.game_url).addClass('ext').html('Open game on Lichess <span class="extbox"><svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M3 9 9 3M4.5 3H9v4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'));
+    .append($('<a target="_blank" rel="noopener">').attr('href', p.game_url).addClass('ext').html('Open game on ' + (/chess\.com/.test(p.game_url) ? 'Chess.com' : 'Lichess') + ' <span class="extbox"><svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M3 9 9 3M4.5 3H9v4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'));
   $('#solution').empty();
   setStatus("What's the best move?");
   updateTurn(); renderStats(); renderLists();
@@ -604,11 +605,14 @@ function onProgress(st) {
   $('#stop').prop('disabled', st.phase === 'done');
 }
 
+const SITE_NAMES = { lichess: 'Lichess', chesscom: 'Chess.com' };
+let lastSource = 'lichess';   // the site of the current run, for messages
+
 function renderProgress() {
   const st = lastSt;
   if (!st) return;
   const n = st.puzzles.blitz.length + st.puzzles.rapid.length;
-  if (st.phase === 'fetching games') setProgress('Fetching games from Lichess...', 0.02);
+  if (st.phase === 'fetching games') setProgress(`Fetching games from ${SITE_NAMES[lastSource]}...`, 0.02);
   else if (st.phase === 'starting engines') setProgress(`Starting ${st.workers} Stockfish workers in your browser...`, 0.03);
   else if (st.phase === 'analysing') {
     const elapsed = (performance.now() - st.startedAt) / 1000;
@@ -661,7 +665,18 @@ function cachePut(key, entry) {
     } catch (e2) {}
   }
 }
-try { const u = localStorage.getItem('lastUsername'); if (u && /^[A-Za-z0-9_-]{2,30}$/.test(u)) $('#username').val(u); } catch (e) {}
+// one remembered username per site, and the site that was used last
+const USER_RE = /^[A-Za-z0-9_-]{2,30}$/;
+function savedUsers() { try { return JSON.parse(localStorage.getItem('lastUsers')) || {}; } catch (e) { return {}; } }
+function rememberUser(source, username) {
+  try { localStorage.setItem('lastUsers', JSON.stringify({ ...savedUsers(), [source]: username })); localStorage.setItem('lastSource', source); } catch (e) {}
+}
+function applySource(source) {
+  $('#source').val(source);
+  $('#username').attr('placeholder', SITE_NAMES[source] + ' username').val(savedUsers()[source] || '');
+}
+$('#source').on('change', function () { applySource(this.value); });
+{ let src = 'lichess'; try { src = localStorage.getItem('lastSource') || src; } catch (e) {} applySource(SITE_NAMES[src] ? src : 'lichess'); }
 $('#nBlitz').val('20'); $('#nRapid').val('10');   // defaults, then whatever was chosen last time
 try { const c = JSON.parse(localStorage.getItem('gameCounts')); if (c) { for (const [sel, v] of [['#nBlitz', c.b], ['#nRapid', c.r]]) if ($(sel + ' option[value="' + v + '"]').length) $(sel).val(String(v)); } } catch (e) {}
 cachePrune();
@@ -682,15 +697,16 @@ async function startRun(force) {
   board.position('start', false); setStatus('Waiting for the first puzzle...');
   $('#stop').prop('disabled', true);
   setProgress('Starting...', 0);
-  const username = $('#username').val().trim();
-  if (!/^[A-Za-z0-9_-]{2,30}$/.test(username)) { setProgress('Enter a valid Lichess username', 0, true); return; }
-  try { localStorage.setItem('lastUsername', username); } catch (e) {}   // remembered for next visit
+  const username = $('#username').val().trim(), source = $('#source').val();
+  if (!/^[A-Za-z0-9_-]{2,30}$/.test(username)) { setProgress(`Enter a valid ${SITE_NAMES[source]} username`, 0, true); return; }
+  rememberUser(source, username);   // remembered for next visit
   const blitz = parseInt($('#nBlitz').val(), 10) || 0, rapid = parseInt($('#nRapid').val(), 10) || 0;
   try { localStorage.setItem('gameCounts', JSON.stringify({ b: blitz, r: rapid })); } catch (e) {}
   if (!blitz && !rapid) { setProgress('Choose how many blitz or rapid games to analyse.', 0, true); return; }
   const cache = { get: (id) => (force ? null : (cacheGet(cacheKey(username, id)) || {}).puzzles || null),
                   put: (id, puzzles) => cachePut(cacheKey(username, id), { t: Date.now(), puzzles }) };
-  const mine = run = Analysis.run({ username, blitz, rapid, cache, onProgress, onUpdate });
+  lastSource = source;
+  const mine = run = Analysis.run({ username, blitz, rapid, source, cache, onProgress, onUpdate });
   try {
     await mine.promise;
   } catch (e) {

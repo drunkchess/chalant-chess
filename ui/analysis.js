@@ -138,10 +138,17 @@ const Analysis = (() => {
   }
 
   function prettyTimeControl(tc) {
-    const m = /^(\d+)\+(\d+)$/.exec(tc || '');
+    const m = /^(\d+)(?:\+(\d+))?$/.exec(tc || '');
     if (!m) return tc || '?';
     const base = +m[1];
-    return `${base % 60 === 0 ? base / 60 : (base / 60).toFixed(1)}+${+m[2]}`;
+    return `${base % 60 === 0 ? base / 60 : (base / 60).toFixed(1)}+${+(m[2] || 0)}`;
+  }
+
+  // Chess.com writes the ending as a sentence ("X won by resignation", "Game drawn by repetition", "X won on time"); keep the reason only.
+  function prettyTermination(t, fromChessCom) {
+    if (!t || !fromChessCom) return t || '';
+    const m = /\b(?:by|on)\s+(.+)$/i.exec(t), w = m ? m[1] : t;
+    return w.charAt(0).toUpperCase() + w.slice(1);
   }
 
   // ---------- PGN ----------
@@ -170,7 +177,8 @@ const Analysis = (() => {
     const { headers: h, startFen, moves } = parsePgn(pgnText);
     const info = { perf, game_index: gameIndex };
     if (!moves.length) return { info, error: 'unreadable PGN', fens: [], moves: [] };
-    const gameId = h.GameId || (h.Site || '?').replace(/\/+$/, '').split('/').pop();
+    const link = h.Link || '';   // only Chess.com PGNs have this
+    const gameId = link ? 'cc' + link.replace(/\/+$/, '').split('/').pop() : (h.GameId || (h.Site || '?').replace(/\/+$/, '').split('/').pop());
     const white = h.White || '?', black = h.Black || '?';
     const userColor = white.toLowerCase() === username.toLowerCase() ? 'white' : 'black';
     const result = h.Result || '*';
@@ -179,7 +187,7 @@ const Analysis = (() => {
       date: h.UTCDate || h.Date || '?', time_control: prettyTimeControl(h.TimeControl),
       user_outcome: result === '1/2-1/2' ? 'draw'
         : (result === '1-0' || result === '0-1') ? (((result === '1-0') === (userColor === 'white')) ? 'won' : 'lost') : 'unknown',
-      termination: h.Termination || '',
+      termination: prettyTermination(h.Termination, !!link), url: link,
     });
     const board = new Chess(startFen), fens = [];
     for (const m of moves) {
@@ -221,7 +229,7 @@ const Analysis = (() => {
         played_correct: played ? played.uci === bestMove : null,
         result: info.result, termination: info.termination, user_outcome: info.user_outcome,
         id: `${info.game_id}-${ply}`, game_id: info.game_id,
-        game_url: `https://lichess.org/${info.game_id}/${info.user_color}#${ply}`,
+        game_url: info.url || `https://lichess.org/${info.game_id}/${info.user_color}#${ply}`,
         perf: info.perf, game_index: info.game_index, fen, turn: solverColor, ply,
         move_number: fullmove(fen), solver_is_player: solverColor === info.user_color,
         user_color: info.user_color, opponent: info.opponent, time_control: info.time_control,
@@ -273,11 +281,37 @@ const Analysis = (() => {
     return text.split(/\n\n(?=\[Event )/).filter(g => !/\[Variant "(?!Standard")/.test(g));
   }
 
+  // ---------- Chess.com (public API, open to browsers) ----------
+  // Games come as one JSON file per month. Walk the months newest-first until enough blitz / rapid games are collected.
+  const CC_MAX_MONTHS = 36;
+  async function ccJson(url, tok) {
+    let r;
+    try { r = await fetch(url, { signal: tok.signal }); }
+    catch (e) { if (tok.cancelled) throw new Cancelled(); throw new Error('Could not reach Chess.com: ' + e.message); }
+    if (r.status === 404) return null;
+    if (r.status === 429) throw new Error('Chess.com rate limit hit - wait a minute and try again');
+    if (!r.ok) throw new Error('Chess.com returned HTTP ' + r.status);
+    return r.json();
+  }
+  async function fetchChessCom(username, want, tok) {   // want {blitz: n, rapid: n} -> {blitz: [pgn, ...], rapid: [...]}, newest first
+    const arch = await ccJson(`https://api.chess.com/pub/player/${encodeURIComponent(username.toLowerCase())}/games/archives`, tok);
+    if (!arch) throw new Error(`Chess.com user '${username}' not found`);
+    const out = { blitz: [], rapid: [] };
+    for (const url of (arch.archives || []).slice().reverse().slice(0, CC_MAX_MONTHS)) {
+      if (out.blitz.length >= (want.blitz || 0) && out.rapid.length >= (want.rapid || 0)) break;
+      const month = await ccJson(url, tok);
+      const games = ((month && month.games) || []).filter(g => g.rules === 'chess' && g.pgn && want[g.time_class] > 0)
+        .sort((x, y) => y.end_time - x.end_time);
+      for (const g of games) if (out[g.time_class].length < want[g.time_class]) out[g.time_class].push(g.pgn.replace(/\r\n/g, '\n'));
+    }
+    return out;
+  }
+
   // ---------- the job ----------
   function defaultWorkers() { return Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)); }
 
   // cache (optional): { get(gameId) -> puzzles[] | null, put(gameId, puzzles) }. Games it already has are not analysed again.
-  function run({ username, blitz, rapid, workers = defaultWorkers(), cache = null, onProgress = () => {}, onUpdate = () => {} }) {
+  function run({ username, blitz, rapid, source = 'lichess', workers = defaultWorkers(), cache = null, onProgress = () => {}, onUpdate = () => {} }) {
     const ctl = new AbortController();
     const tok = { cancelled: false, signal: ctl.signal };
     const engines = [];
@@ -290,9 +324,10 @@ const Analysis = (() => {
       try {
         emit();
         const games = [], tasks = [];   // tasks: every position of every game, in game order then ply order
+        const fromCc = source === 'chesscom' ? await fetchChessCom(username, { blitz, rapid }, tok) : null;
         for (const [perf, n] of [['blitz', blitz], ['rapid', rapid]]) {
           if (n <= 0) continue;
-          const pgns = await fetchGames(username, perf, n, tok);
+          const pgns = fromCc ? fromCc[perf] : await fetchGames(username, perf, n, tok);
           state.fetched[perf] = pgns.length;
           pgns.forEach((pgn, i) => {
             const ctx = prepareGame(pgn, perf, username, i);
