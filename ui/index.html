@@ -19,7 +19,7 @@
   header h1 { font-family:var(--font-display); font-size:19px; font-weight:700; letter-spacing:-.2px; margin:0 8px 0 0; }
   header label { font-size:13px; color:var(--muted); }
   input { background:#1d1c1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; }
-  input[type=text] { width:200px; } select.count, #source { padding:7px 8px; }
+  input[type=text] { width:200px; } select.count, #source, #depth { padding:7px 8px; }
   #progress { flex:1 1 100%; font-size:13px; color:var(--muted); }
   #progress.bad { color:var(--bad); }
   #bar { visibility:hidden; height:4px; background:#1d1c1a; border-radius:2px; margin-top:6px; overflow:hidden; }
@@ -165,6 +165,13 @@
     <input type="text" id="username" placeholder="Lichess username" autocomplete="off" required>
     <label>Blitz <select id="nBlitz" class="count"><option value="5">Last 5 games</option><option value="10">Last 10 games</option><option value="20">Last 20 games</option><option value="50">Last 50 games</option><option value="0">None</option></select></label>
     <label>Rapid <select id="nRapid" class="count"><option value="5">Last 5 games</option><option value="10">Last 10 games</option><option value="20">Last 20 games</option><option value="50">Last 50 games</option><option value="0">None</option></select></label>
+    <label title="How deeply the engine checks each position. Lower is faster but can miss puzzles; higher is slower and heavier on your CPU, but finds more reliable puzzles.">Depth
+      <select id="depth">
+        <option value="12" title="Fastest option, but may miss some puzzles. Good for a quick look or an older phone.">12 · Quick</option>
+        <option value="15" title="A good balance of speed and quality. Recommended for phones and tablets.">15 · Mobile</option>
+        <option value="18" title="Thorough analysis. Recommended for laptops and desktop PCs.">18 · PC / Laptop</option>
+        <option value="20" title="Highest quality, roughly 2x slower than 18. For powerful computers.">20 · High-end PC</option>
+      </select></label>
     <button class="primary" id="go" type="submit">Fetch &amp; analyse</button>
     <button type="button" id="stop" disabled>Stop</button>
   </form>
@@ -234,7 +241,7 @@ const byPerf = { blitz: [], rapid: [] };
 let cur = null, game, board, solved = false, attempted = false, free = false;  // free: puzzle over, board is open for exploring
 let sol = [], step = 0, busy = false;   // sol: verified UCI moves, solver first, alternating with opponent replies
 
-const EVAL_DEPTH = 18;
+let EVAL_DEPTH = 18;   // the eval bar uses the same depth as the puzzle search (set from the Depth dropdown)
 function engineKind() { return 'browser'; }
 
 function showEval(r, err) {
@@ -637,8 +644,9 @@ function onUpdate(puzzles) {
 // Results are cached in the browser (localStorage) for 24 hours, one entry per game (and per username, since a puzzle's
 // "your move / opponent's move" depends on who is asking). Changing the number of games only analyses the games not seen yet.
 // Bump CACHE_VERSION whenever the puzzle rules or the engine settings change, so old results are never reused.
-const CACHE_TTL = 24 * 3600 * 1000, CACHE_VERSION = 'v1-d18', CACHE_PREFIX = 'gameCache:';
-const cacheKey = (u, gameId) => `${CACHE_PREFIX}${CACHE_VERSION}:${u.toLowerCase()}:${gameId}`;
+const CACHE_TTL = 24 * 3600 * 1000, CACHE_VERSION = 'v2', CACHE_PREFIX = 'gameCache:';
+const DEPTHS = [12, 15, 18, 20];
+const cacheKey = (u, gameId, depth) => `${CACHE_PREFIX}${CACHE_VERSION}:d${depth}:${u.toLowerCase()}:${gameId}`;
 function cacheEntries() {
   const out = [];
   try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.startsWith(CACHE_PREFIX) || k.startsWith('puzzleCache:'))) out.push(k); } } catch (e) {}
@@ -677,6 +685,13 @@ function applySource(source) {
 }
 $('#source').on('change', function () { applySource(this.value); });
 { let src = 'lichess'; try { src = localStorage.getItem('lastSource') || src; } catch (e) {} applySource(SITE_NAMES[src] ? src : 'lichess'); }
+{ // depth: phones and tablets default to 15, computers to 18; whatever was chosen last is remembered
+  const touch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|Mobi/i.test(navigator.userAgent);
+  let d = touch ? 15 : 18;
+  try { const v = parseInt(localStorage.getItem('depth'), 10); if (DEPTHS.includes(v)) d = v; } catch (e) {}
+  $('#depth').val(String(d)); EVAL_DEPTH = d;
+  $('#depth').on('change', function () { EVAL_DEPTH = parseInt(this.value, 10); try { localStorage.setItem('depth', this.value); } catch (e) {} });
+}
 $('#nBlitz').val('20'); $('#nRapid').val('10');   // defaults, then whatever was chosen last time
 try { const c = JSON.parse(localStorage.getItem('gameCounts')); if (c) { for (const [sel, v] of [['#nBlitz', c.b], ['#nRapid', c.r]]) if ($(sel + ' option[value="' + v + '"]').length) $(sel).val(String(v)); } } catch (e) {}
 cachePrune();
@@ -700,13 +715,20 @@ async function startRun(force) {
   const username = $('#username').val().trim(), source = $('#source').val();
   if (!/^[A-Za-z0-9_-]{2,30}$/.test(username)) { setProgress(`Enter a valid ${SITE_NAMES[source]} username`, 0, true); return; }
   rememberUser(source, username);   // remembered for next visit
+  const depth = parseInt($('#depth').val(), 10) || Analysis.DEPTH; EVAL_DEPTH = depth;
   const blitz = parseInt($('#nBlitz').val(), 10) || 0, rapid = parseInt($('#nRapid').val(), 10) || 0;
   try { localStorage.setItem('gameCounts', JSON.stringify({ b: blitz, r: rapid })); } catch (e) {}
   if (!blitz && !rapid) { setProgress('Choose how many blitz or rapid games to analyse.', 0, true); return; }
-  const cache = { get: (id) => (force ? null : (cacheGet(cacheKey(username, id)) || {}).puzzles || null),
-                  put: (id, puzzles) => cachePut(cacheKey(username, id), { t: Date.now(), puzzles }) };
+  const cache = {
+    get: (id) => {   // this depth first, then any deeper analysis of the same game (deeper is at least as good)
+      if (force) return null;
+      for (const d of DEPTHS.filter(x => x >= depth)) { const e = cacheGet(cacheKey(username, id, d)); if (e) return e.puzzles; }
+      return null;
+    },
+    put: (id, puzzles) => cachePut(cacheKey(username, id, depth), { t: Date.now(), puzzles }),
+  };
   lastSource = source;
-  const mine = run = Analysis.run({ username, blitz, rapid, source, cache, onProgress, onUpdate });
+  const mine = run = Analysis.run({ username, blitz, rapid, source, depth, cache, onProgress, onUpdate });
   try {
     await mine.promise;
   } catch (e) {

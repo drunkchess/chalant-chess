@@ -202,11 +202,12 @@ const Analysis = (() => {
   async function analysePosition(eng, ctx, ply) {
     const fen = ctx.fens[ply - 1];
     await eng.newGame();               // clear the hash so a result does not depend on which worker ran what before
-    const lines = await analyseLines(eng, fen, DEPTH);
+    const depth = ctx.depth || DEPTH;   // chosen per run (Fast / Balanced / Best)
+    const lines = await analyseLines(eng, fen, depth);
     if (!isPuzzle(lines)) return null;
-    const { count: onlyMoves, solution } = await countOnlyMoves(eng, fen, lines, DEPTH);
+    const { count: onlyMoves, solution } = await countOnlyMoves(eng, fen, lines, depth);
     if (onlyMoves < MIN_ONLY) return null;
-    return { ply, fen, lines, onlyMoves, solution, critical: await criticalDepth(eng, fen, lines[0].move) };
+    return { ply, fen, lines, onlyMoves, solution, critical: await criticalDepth(eng, fen, lines[0].move, Math.min(12, depth)) };
   }
 
   // All positions done: repeat-line rule in ply order, then build the puzzle records.
@@ -228,7 +229,7 @@ const Analysis = (() => {
         played_san: played ? played.san : null,
         played_correct: played ? played.uci === bestMove : null,
         result: info.result, termination: info.termination, user_outcome: info.user_outcome,
-        id: `${info.game_id}-${ply}`, game_id: info.game_id,
+        id: `${info.game_id}-${ply}`, game_id: info.game_id, depth: ctx.depth || DEPTH,
         game_url: info.url || `https://lichess.org/${info.game_id}/${info.user_color}#${ply}`,
         perf: info.perf, game_index: info.game_index, fen, turn: solverColor, ply,
         move_number: fullmove(fen), solver_is_player: solverColor === info.user_color,
@@ -311,7 +312,7 @@ const Analysis = (() => {
   function defaultWorkers() { return Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)); }
 
   // cache (optional): { get(gameId) -> puzzles[] | null, put(gameId, puzzles) }. Games it already has are not analysed again.
-  function run({ username, blitz, rapid, source = 'lichess', workers = defaultWorkers(), cache = null, onProgress = () => {}, onUpdate = () => {} }) {
+  function run({ username, blitz, rapid, source = 'lichess', depth = DEPTH, workers = defaultWorkers(), cache = null, onProgress = () => {}, onUpdate = () => {} }) {
     const ctl = new AbortController();
     const tok = { cancelled: false, signal: ctl.signal };
     const engines = [];
@@ -331,7 +332,7 @@ const Analysis = (() => {
           state.fetched[perf] = pgns.length;
           pgns.forEach((pgn, i) => {
             const ctx = prepareGame(pgn, perf, username, i);
-            ctx.cands = []; ctx.left = ctx.fens.length;
+            ctx.cands = []; ctx.left = ctx.fens.length; ctx.depth = depth;
             games.push(ctx);
             const hit = cache && !ctx.error && ctx.info.game_id ? cache.get(ctx.info.game_id) : null;
             if (hit) { ctx.cachedPuzzles = hit; return; }   // analysed before: no positions queued
@@ -390,5 +391,5 @@ const Analysis = (() => {
     return { promise, cancel };
   }
 
-  return { run, defaultWorkers, parsePgn, prepareGame, analyseGame, UciEngine, Cancelled };
+  return { run, DEPTH, defaultWorkers, parsePgn, prepareGame, analyseGame, UciEngine, Cancelled };
 })();
